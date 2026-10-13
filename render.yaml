@@ -1,0 +1,40 @@
+# Production-capable blueprint. Creating this service incurs Render hosting charges.
+# No Twilio secrets are committed. First startup stays in DEMO until configured.
+services:
+  - type: web
+    name: pulsedial-consent-calling
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: node bootstrap.cjs
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    disk:
+      name: pulsedial-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: MODE
+        value: demo
+      - key: HOST
+        value: 0.0.0.0
+      - key: REQUIRE_LOGIN
+        value: '1'
+      - key: DATA_FILE
+        value: /var/data/pulsedial.json
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VOICE_FROM
+        sync: false
+      - key: TWILIO_SMS_FROM
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
