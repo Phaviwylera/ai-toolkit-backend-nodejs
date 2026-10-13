@@ -32,6 +32,9 @@ services:
         sync: false
       - key: TWILIO_VOICE_FROM
         value: '+17372508034'
+      # Set this privately in Render to +91... . Never publish recipient numbers.
+      - key: ALLOWED_RECIPIENT
+        sync: false
       - key: TWILIO_SMS_FROM
         sync: false
       - key: TWILIO_WHATSAPP_FROM
