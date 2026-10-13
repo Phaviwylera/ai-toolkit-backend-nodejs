@@ -1,0 +1,9 @@
+# Free static hosting; this application makes internet calls only, not telephone network calls.
+services:
+  - type: web
+    name: relay-free-connect
+    runtime: static
+    plan: free
+    buildCommand: node build-relay.cjs
+    staticPublishPath: ./free-relay
+    autoDeployTrigger: commit
