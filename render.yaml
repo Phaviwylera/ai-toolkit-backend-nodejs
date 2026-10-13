@@ -31,7 +31,7 @@ services:
       - key: TWILIO_AUTH_TOKEN
         sync: false
       - key: TWILIO_VOICE_FROM
-        sync: false
+        value: '+17372508034'
       - key: TWILIO_SMS_FROM
         sync: false
       - key: TWILIO_WHATSAPP_FROM
