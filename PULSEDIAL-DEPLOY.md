@@ -3,6 +3,8 @@
 The dedicated `pulsedial-deploy` branch contains the real-calling PulseDial application. It is isolated from `main`.
 
 ## Current state
+- The intended destination is an Indian mobile number supplied privately in the chat. Enter it as `ALLOWED_RECIPIENT` in **private Render environment variables**, not in GitHub. The dashboard requires the same number before initiating a campaign.
+- A dedicated-recipient enforcement test has been added. All 13 automated tests pass; another recipient is rejected before invitation and before dialing.
 - Outgoing caller ID configured for `+17372508034` (provider capability and ownership not independently verified).
 - Full live Twilio REST Voice/SMS and recipient-initiated WhatsApp consent flow are included.
 - All 12 local automated tests passed as of October 13, 2026.
@@ -26,7 +28,7 @@ The dedicated `pulsedial-deploy` branch contains the real-calling PulseDial appl
 | `ADMIN_PASSWORD` | A newly generated unique secret, 16+ characters |
 | `TWILIO_ACCOUNT_SID` | Your Twilio Account SID, entered privately |
 | `TWILIO_AUTH_TOKEN` | Your **rotated** Twilio Auth Token, entered privately |
-| `TWILIO_VOICE_FROM` | `+17372508034` — provided as the intended outgoing caller number; confirm it is **Voice enabled** in Twilio Active Numbers |
+| `TWILIO_VOICE_FROM` | `+17372508034` — provided as the intended outgoing caller number; confirm it is **Voice enabled** in Twilio Active Numbers |\n| `ALLOWED_RECIPIENT` | Enter the designated `+91` destination *privately*, in E.164 format. This restricts PulseDial to one permitted recipient |
 | `TWILIO_SMS_FROM` | Your two-way SMS-capable Twilio number (if SMS opt-in used) |
 | `TWILIO_WHATSAPP_FROM` | `whatsapp:+...` for a **registered WhatsApp Business sender** (required for India's WhatsApp opt-in route) |
 | `PUBLIC_BASE_URL` | Exact Render HTTPS origin, e.g. `https://your-service.onrender.com` |
