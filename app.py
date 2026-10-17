@@ -3,6 +3,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 import engine
 
@@ -23,6 +24,8 @@ def cloud_options():
     return {**base_options(),'socket_timeout':15,'retries':1,'cachedir':False,'hls_prefer_native':True,'external_downloader':{'default':'native'},'proxy':'','max_filesize':MAX,'extractor_retries':0}
 engine.options=cloud_options
 app=FastAPI(docs_url=None,redoc_url=None)
+app.mount('/assets',StaticFiles(directory=ROOT/'assets'),name='assets')
+app.mount('/fonts',StaticFiles(directory=ROOT/'fonts'),name='fonts')
 
 def cleanup():
     now=time.time()

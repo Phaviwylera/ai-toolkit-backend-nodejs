@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "font-mcp": {"command": "node", "args": [".tools/font-mcp/dist/index.js"]},
+    "designlang": {"command": "npx", "args": ["-y", "designlang@13.3.2", "mcp"]}
+  }
+}
