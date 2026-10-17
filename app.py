@@ -20,7 +20,7 @@ socket.getaddrinfo=public_dns
 base_options=engine.options
 
 def cloud_options():
-    return {**base_options(),'socket_timeout':15,'retries':1,'cachedir':False,'hls_prefer_native':True,'external_downloader':{'default':'native'},'proxy':'','max_filesize':MAX,'extractor_retries':1}
+    return {**base_options(),'socket_timeout':15,'retries':1,'cachedir':False,'hls_prefer_native':True,'external_downloader':{'default':'native'},'proxy':'','max_filesize':MAX,'extractor_retries':0}
 engine.options=cloud_options
 app=FastAPI(docs_url=None,redoc_url=None)
 
@@ -77,14 +77,14 @@ async def inspect(request:Request):
     if not INSPECT.acquire(blocking=False):raise HTTPException(429,'The server is checking other videos. Please try again shortly.')
     try:
         info,fs=await run_in_threadpool(engine.inspect,url)
-        return {'title':info.get('title','Video'),'source':engine.platform(url),'duration':info.get('duration'),'maxHeight':max((f.get('height') or 0 for f in fs),default=0),'heights':sorted({int(f['height']) for f in fs if f.get('height')},reverse=True)}
-    except Exception as e:raise HTTPException(400,f'The website could not provide this video. {str(e)[:700]}')
+        return {'title':info.get('title','Video'),'source':engine.platform(url),'duration':info.get('duration'),'thumbnail':info.get('thumbnail'),'maxHeight':max((f.get('height') or 0 for f in fs),default=0),'heights':sorted({int(f['height']) for f in fs if f.get('height')},reverse=True)}
+    except Exception as e:
+        error=engine.describe_error(e,engine.platform(url))
+        return JSONResponse({'error':str(error),'code':error.code,'retryable':error.retryable},422)
     finally:INSPECT.release()
 
 def download(jobid,url,quality):
     j=JOBS[jobid]
-    original=engine.options
-    # Enforce byte and time limits throughout each track download.
     try:
         engine.run(jobid,url,quality)
     finally:
