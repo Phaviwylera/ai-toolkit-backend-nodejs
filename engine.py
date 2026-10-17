@@ -20,10 +20,12 @@ class VideoError(ValueError):
 def describe_error(error,site):
     if isinstance(error,VideoError):return error
     s=str(error).lower()
-    if any(t in s for t in ['private video','members-only','not available in your country','age-restricted','login required','log in to','sign in to confirm','cookies are needed','not a bot']):
+    if any(t in s for t in ['sign in to confirm','not a bot']):
+        return VideoError(f'{site} is asking this hosting server to verify its requests. This video cannot be downloaded from this server right now.','server_verification')
+    if any(t in s for t in ['private video','members-only','not available in your country','age-restricted','login required','log in to','cookies are needed']):
         return VideoError(f'{site} requires login, verification, or access permission for this video. This online server cannot retrieve it.','access_restricted')
     if any(t in s for t in ['failed to extract any player response','http error 429','http error 403','http error 402','http error 404','unable to download api','unable to download webpage']):
-        return VideoError(f'{site} did not allow this server to read the video. The engine is up to date; retry once, or try another public video.','platform_blocked',True)
+        return VideoError(f'{site} is refusing requests from this hosting server. Try again later, or try another public video.','platform_blocked',True)
     if 'unsupported url' in s:return VideoError('This link is not supported. Paste the video’s direct post or watch link.','unsupported_url')
     if any(t in s for t in ['not available','removed','deleted','unavailable']):return VideoError('This video is unavailable or has been removed.','video_unavailable')
     if any(t in s for t in ['timed out','timeout','connection','resolve','temporary failure']):return VideoError('The source did not respond in time. Please try again.','network_error',True)
