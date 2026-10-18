@@ -79,20 +79,18 @@
     renderEvents(p.events);
   }
 
-  async function poll(){
-    try{
-      const r=await fetch('/api/poly/demo/server',{cache:'no-store'});
-      const j=await r.json();
-      if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
-      render(j);
-    }catch(e){
-      set('demoStatus','SERVER DEMO ERROR','bad');
-      set('demoWhy',e.message,'bad');
-    }
+  function acceptSnapshot(j){
+    if(j&&typeof j==='object')render(j);
   }
 
+  window.addEventListener('poly-edge-server-snapshot',e=>acceptSnapshot(e.detail));
+  window.addEventListener('poly-edge-server-error',e=>{
+    const d=e.detail||{};
+    if(d.status===429){set('demoStatus','RATE LIMIT BACKOFF','warn');set('demoWhy','Shared feed backing off '+Math.ceil((d.retryMs||0)/1000)+'s','warn')}
+  });
+
   function boot(){
-    poll();setInterval(poll,1000);
+    const snap=window.POLY_EDGE_STATE?.snap;if(snap)acceptSnapshot(snap);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
