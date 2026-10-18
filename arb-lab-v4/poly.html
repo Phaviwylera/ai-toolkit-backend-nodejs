@@ -90,9 +90,31 @@
       <div id="tapeBody" class="tapeBody"><div class="empty">No trade-quality signal yet.</div></div>
     </section>
 
+    <section class="card demo">
+      <div class="title"><span>07 / 3-HOUR DEMO ACCOUNT</span><em id="demoStatus">STARTING</em></div>
+      <div class="demoTop">
+        <div><span>START</span><b>$2.00</b></div>
+        <div><span>EQUITY</span><b id="demoEquity">$2.00</b></div>
+        <div><span>REALIZED P/L</span><b id="demoPnl">$0.00</b></div>
+        <div><span>SESSION LEFT</span><b id="demoLeft">03:00:00</b></div>
+      </div>
+      <div class="demoStats">
+        <div><span>TRADES</span><b id="demoTrades">0</b></div>
+        <div><span>WIN RATE</span><b id="demoWinRate">—</b></div>
+        <div><span>FEES</span><b id="demoFees">$0.0000</b></div>
+        <div><span>MAX DRAWDOWN</span><b id="demoDrawdown">0.00%</b></div>
+        <div><span>BLOCKED BY MINIMUM</span><b id="demoBlocked">0</b></div>
+        <div><span>MISSED / NO FILL</span><b id="demoNoFill">0</b></div>
+      </div>
+      <div class="position" id="demoPosition">NO OPEN PAPER POSITION</div>
+      <p class="note">This uses the real live CLOB bid/ask, live fee curve, live minimum size and simulated order latency. The only missing step is sending an authenticated order to Polymarket.</p>
+      <div class="demoTapeHead"><span>TIME</span><span>ACTION</span><span>SIDE</span><span>PRICE</span><span>P/L</span><span>DETAIL</span></div>
+      <div id="demoTape" class="demoTape"><div class="empty">Waiting for a trade-quality live signal.</div></div>
+    </section>
+
     <section class="controls">
       <article class="card">
-        <div class="title"><span>07 / LIVE TRADING</span><em>LOCKED</em></div>
+        <div class="title"><span>08 / LIVE TRADING</span><em>LOCKED</em></div>
         <h3>Scanner is live. Real orders are not enabled yet.</h3>
         <p>The detection engine can run without a wallet. Actual Polymarket trading requires a Polygon/Polymarket account plus authenticated CLOB credentials. Private keys should never be pasted into chat.</p>
         <div class="gates">
@@ -104,7 +126,7 @@
       </article>
 
       <article class="card">
-        <div class="title"><span>08 / STRATEGY RULES</span><em>FAIL-CLOSED</em></div>
+        <div class="title"><span>09 / STRATEGY RULES</span><em>FAIL-CLOSED</em></div>
         <ul>
           <li>Only use the current BTC 5-minute Up/Down market.</li>
           <li>Trade signal requires trusted opening reference, fresh feeds and sufficient book liquidity.</li>
@@ -116,7 +138,7 @@
     </section>
   </main>
 
-  <footer><span>POLY/EDGE V1</span><span>RESEARCH + LIVE MARKET SCANNER</span><span>NO GUARANTEED RETURNS</span></footer>
+  <footer><span>POLY/EDGE V2 · LIVE PAPER TRADER</span><span>RESEARCH + LIVE MARKET SCANNER</span><span>NO GUARANTEED RETURNS</span></footer>
 </div>
 <script src="/poly.js" defer></script>
 </body>
