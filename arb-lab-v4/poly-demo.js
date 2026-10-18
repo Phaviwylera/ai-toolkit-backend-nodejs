@@ -14,7 +14,7 @@
 
   function renderReasons(reasons){
     const box=$('demoReasons');if(!box)return;box.replaceChildren();
-    const entries=Object.entries(reasons||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const entries=Object.entries(reasons||{}).sort((a,b)=>b[1]-a[1]).slice(0,16);
     if(!entries.length){
       const d=document.createElement('div');const s=document.createElement('span');s.textContent='AUDIT';const b=document.createElement('b');b.textContent='Collecting gate decisions…';d.append(s,b);box.append(d);return;
     }
@@ -29,7 +29,8 @@
     if(!Array.isArray(events)||!events.length){
       const e=document.createElement('div');e.className='empty';e.textContent='No paper order yet. Decision audit above shows why.';body.append(e);return;
     }
-    for(const x of events.slice(0,35)){
+    set('historyCount',String(Array.isArray(events)?events.length:0)+' EVENTS');
+    for(const x of events.slice(0,200)){
       const row=document.createElement('div');row.className='demoRow';
       const vals=[
         istTime(x.t),
@@ -62,6 +63,10 @@
     set('demoNoFill',String(p.nofills||0));
     set('demoAttempts',String(p.executionAttempts||0));
     set('demoPostRejects',String(p.postLatencyRejects||0));
+    set('pairAttemptsView',String(p.pairAttempts||0));
+    set('matchedSetsHistory',Number(p.matchedSets||0).toFixed(2));
+    set('lockedPairPnlHistory',money(p.lockedPairPnl||0,4),Number(p.lockedPairPnl||0)>=0?'good':'bad');
+    set('avgPairCostHistory',Number.isFinite(Number(p.avgMatchedSetCost))?Number(p.avgMatchedSetCost).toFixed(4):'—');
     const left=Math.max(0,Math.floor((Number(p.endsAt)||0)-Number(j.serverTime||Date.now()/1000)));
     set('demoLeft',String(Math.floor(left/3600)).padStart(2,'0')+':'+String(Math.floor((left%3600)/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0'));
     const status=p.status==='complete'?'COMPLETE':p.status==='risk_locked'?'RISK LOCKED':'SERVER LIVE PAPER';
@@ -72,8 +77,9 @@
     if(p.position){
       const side=p.position.side||'—',key=side==='UP'?'up':'down';
       const bid=Number(j.bbo?.[key]?.bid);
-      set('demoPosition',side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—'),'warn');
-    }else set('demoPosition','NO OPEN PAPER POSITION');
+      const txt=side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—');
+      set('demoPosition',txt,'warn');set('positionForensic',txt,'warn');
+    }else{set('demoPosition','NO OPEN PAPER POSITION');set('positionForensic','NO OPEN PAPER POSITION');}
 
     set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':j.mode==='RISK_LOCK'?'bad':'warn');
     if(j.candidate){
