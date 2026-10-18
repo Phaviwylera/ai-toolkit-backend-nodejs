@@ -27,7 +27,7 @@
       ref:{spot:n(j?.spot),spotAgeSec:n(j?.spotAgeSec),twap:n(j?.twap),twapAgeSec:n(j?.twapAgeSec),openRef:n(j?.openRef),openTrusted:!!j?.openTrusted},
       model:model?{remaining:n(model.remaining),elapsed:n(model.elapsed),projected:n(model.projected),sigma:n(model.sigma),margin:n(model.margin),z:n(model.z),rawFairUp:n(model.rawFairUp),fairUp:n(model.fairUp),fairDown:n(model.fairDown),basis:n(model.basis),drift:n(model.drift),leadBps:n(model.leadBps),impulse5Bps:n(model.impulse5Bps),lagScore:n(model.lagScore),reliability:n(model.reliability)}:null,
       candidate:c&&Object.keys(c).length?{side:c.side||null,ask:n(c.ask),fair:n(c.fair),fee:n(c.fee),raw:n(c.raw),net:n(c.net),size:n(c.size)}:null,
-      decision:j?.decision||null,mode:j?.mode||null,reasonCounts:j?.reasonCounts||{},
+      decision:j?.decision||null,mode:j?.mode||null,desk:j?.desk||null,reasonCounts:j?.reasonCounts||{},
       paper:{
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
         startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),roiPct:n(p.roiPct),
@@ -44,7 +44,7 @@
   }
   function domState(){
     const g=id=>document.getElementById(id)?.textContent?.trim()||null;
-    return {feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')};
+    return {feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),novaVerdict:g('novaVerdict'),titanVerdict:g('titanVerdict'),atlasVerdict:g('atlasVerdict'),vegaVerdict:g('vegaVerdict'),demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')};
   }
   function capture(j){
     if(!j||typeof j!=='object')return;
