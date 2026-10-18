@@ -48,7 +48,7 @@ async def home():return FileResponse(ROOT/'index.html', headers={'Cache-Control'
 async def app_js():return FileResponse(ROOT/'app.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
 
 @app.get('/style.css')
-async def style():return FileResponse(ROOT/'style.css',media_type='text/css')
+async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
 @app.get('/health')
 async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'atomic_arbitrage':False}
