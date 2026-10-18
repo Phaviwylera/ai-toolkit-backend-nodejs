@@ -69,7 +69,7 @@
       set('demoPosition',side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—'),'warn');
     }else set('demoPosition','NO OPEN PAPER POSITION');
 
-    set('demoWhy',j.decision||'warming up',(j.decision==='OPPORTUNITY')?'good':'warn');
+    set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':'warn');
     if(j.candidate){
       set('demoBest',(j.candidate.side||'—')+' ask '+(Number(j.candidate.ask||0)*100).toFixed(1)+'¢ · fair '+(Number(j.candidate.fair||0)*100).toFixed(1)+'% · net '+(Number(j.candidate.net||0)*100).toFixed(2)+'¢');
     }else set('demoBest','—');
