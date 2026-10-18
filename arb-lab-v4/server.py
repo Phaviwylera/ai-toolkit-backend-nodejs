@@ -15,6 +15,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from poly_server_demo import engine as poly_server_engine
@@ -25,6 +26,8 @@ RPC = os.environ.get('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
 SOL='So11111111111111111111111111111111111111112'
 USDC='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 app=FastAPI(title='ARB/LAB — Unified Solana Terminal',docs_url=None,redoc_url=None)
+app.add_middleware(CORSMiddleware,allow_origins=['https://arb-lab-v4-unified.onrender.com'],allow_credentials=False,allow_methods=['GET','POST','OPTIONS'],allow_headers=['*'])
+POLY_ENGINE_ROLE=os.environ.get('POLY_ENGINE_ROLE','combined').strip().lower()
 requests_by_ip=defaultdict(deque)
 jupiter_order_lock=asyncio.Lock()
 last_jupiter_order=0.0
@@ -117,11 +120,14 @@ async def load_poly_demo_state():
 
 @app.on_event('startup')
 async def start_poly_server_demo():
+    if POLY_ENGINE_ROLE=='frontend':
+        print('POLY_SERVER_DEMO_DISABLED role=frontend',flush=True)
+        return
     await poly_server_engine.start()
-    print('POLY_SERVER_DEMO_STARTED',flush=True)
+    print(f'POLY_SERVER_DEMO_STARTED role={POLY_ENGINE_ROLE}',flush=True)
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'poly_server_demo':poly_server_engine.feed,'atomic_bundle_execution':True}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'poly_server_demo':poly_server_engine.feed,'poly_engine_role':POLY_ENGINE_ROLE,'atomic_bundle_execution':True}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
