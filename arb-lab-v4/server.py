@@ -319,7 +319,7 @@ async def poly_btc_history():
     return {'status':'ok','candles':out,'oneMinuteRmsPct':round(vol*100,5)}
 
 class PolyDemoStart(BaseModel):
-    startingBalance:float=Field(default=2.0,ge=0.5,le=10000)
+    startingBalance:float=Field(default=20.0,ge=0.5,le=10000)
     durationSeconds:int=Field(default=10800,ge=300,le=86400)
 
 class PolyDemoEvent(BaseModel):
