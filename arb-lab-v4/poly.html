@@ -18,7 +18,7 @@
     <div class="statusCluster">
       <span class="statusPill"><i class="live-dot"></i><b id="feedStatus">CONNECTING</b></span>
       <span class="statusPill">SERVER <b id="serverPing">— ms</b></span>
-      <span class="statusPill" id="clock">--:--:-- UTC</span>
+      <span class="statusPill" id="clock">--:--:-- IST</span>
     </div>
   </header>
 
@@ -29,6 +29,25 @@
       <span>$20 PAPER CAPITAL</span><i>•</i><span>REAL ORDERS LOCKED</span>
     </div>
   </div>
+
+  <section class="accountHero">
+    <div class="accountHeroTop">
+      <div><span>$20 PAPER ACCOUNT · FRESH V4 RISK TEST</span><em id="demoStatus">STARTING</em></div>
+      <div class="riskBadge"><span>RISK STATE</span><b id="riskState">ARMED</b></div>
+    </div>
+    <div class="accountMetrics">
+      <div class="metric start"><span>START</span><b>$20.00</b></div>
+      <div class="metric equity"><span>EQUITY</span><b id="demoEquity">$20.0000</b></div>
+      <div class="metric pnl"><span>REALIZED P/L</span><b id="demoPnl">$0.0000</b></div>
+      <div class="metric"><span>TRADES</span><b id="demoTrades">0</b></div>
+      <div class="metric"><span>WINS / LOSSES</span><b><i id="demoWins">0</i> / <i id="demoLosses">0</i></b></div>
+      <div class="metric"><span>WIN RATE</span><b id="demoWinRate">—</b></div>
+      <div class="metric"><span>FEES</span><b id="demoFees">$0.0000</b></div>
+      <div class="metric"><span>MAX DRAWDOWN</span><b id="demoDrawdown">0.00%</b></div>
+      <div class="metric"><span>SESSION LEFT</span><b id="demoLeft">03:00:00</b></div>
+    </div>
+    <div class="position" id="demoPosition">NO OPEN PAPER POSITION</div>
+  </section>
 
   <main>
     <section class="commandDeck">
@@ -130,22 +149,13 @@
     </section>
 
     <section class="demoPanel">
-      <div class="panelTop"><span>$20 · 3-HOUR AUTONOMOUS PAPER ACCOUNT</span><em id="demoStatus">STARTING</em></div>
-      <div class="demoTop">
-        <div><span>START</span><b>$20.00</b></div>
-        <div><span>EQUITY</span><b id="demoEquity">$20.00</b></div>
-        <div><span>REALIZED P/L</span><b id="demoPnl">$0.00</b></div>
-        <div><span>SESSION LEFT</span><b id="demoLeft">03:00:00</b></div>
-      </div>
-      <div class="demoStats">
-        <div><span>TRADES</span><b id="demoTrades">0</b></div>
-        <div><span>WIN RATE</span><b id="demoWinRate">—</b></div>
-        <div><span>FEES</span><b id="demoFees">$0.0000</b></div>
-        <div><span>MAX DRAWDOWN</span><b id="demoDrawdown">0.00%</b></div>
+      <div class="panelTop"><span>TRADE AUDIT · PAPER EXECUTION</span><em>FORENSIC VIEW</em></div>
+      <div class="auditMini">
         <div><span>BLOCKED</span><b id="demoBlocked">0</b></div>
         <div><span>NO FILL</span><b id="demoNoFill">0</b></div>
+        <div><span>RISK LIMIT</span><b>$1.50 SESSION</b></div>
+        <div><span>MAX EXPOSURE</span><b>$3.25 / TRADE</b></div>
       </div>
-      <div class="position" id="demoPosition">NO OPEN PAPER POSITION</div>
 
       <div class="demoWhy">
         <div><span>WHY NO TRADE?</span><b id="demoWhy">SERVER ENGINE WARMING UP</b></div>
@@ -171,7 +181,7 @@
           <div><span>CLOB ORDER BOOK</span><b id="clobGate">CONNECTING</b></div>
           <div><span>CHAINLINK + TWAP</span><b id="rtdsGate">CONNECTING</b></div>
           <div><span>PAPER EXECUTION</span><b class="ok">AUTONOMOUS</b></div>
-          <div><span>MAX PAPER EXPOSURE</span><b>$6 / TRADE</b></div>
+          <div><span>MAX PAPER EXPOSURE</span><b>$3.25 / TRADE</b></div>
           <div><span>REAL EXECUTION</span><b class="locked">LOCKED</b></div>
         </div>
       </article>
@@ -179,14 +189,14 @@
       <article class="rulesPanel">
         <div class="panelTop"><span>STRATEGY LOGIC</span><em>CALIBRATED</em></div>
         <div class="rule"><b>01</b><span><strong>LAG SCALP</strong> runs through most of the 5-minute window after a 15-second opening stabilization. It requires a measurable Chainlink spot→TWAP lead aligned with the chosen side.</span></div>
-        <div class="rule"><b>02</b><span><strong>RESOLUTION</strong> activates inside the last 75 seconds with stricter probability/edge requirements.</span></div>
+        <div class="rule"><b>02</b><span><strong>RESOLUTION WATCH</strong> remains visible inside the last 75 seconds but auto-trading is disabled until it proves reliable in shadow data.</span></div>
         <div class="rule"><b>03</b><span>Early-window probability is deliberately shrunk toward 50% so small moves cannot instantly become fake 99% certainty.</span></div>
-        <div class="rule"><b>04</b><span>Every paper order rechecks the live book after 350 ms and can NOFILL. One position at a time; maximum paper exposure is $6.</span></div>
+        <div class="rule"><b>04</b><span>Lag direction must persist 2.5s; edge includes entry + estimated exit fee + spread buffer. One trade per market, $3.25 max exposure, $0.50 trade stop and $1.50 session kill-switch.</span></div>
       </article>
     </section>
   </main>
 
-  <footer><span>POLY/EDGE V3</span><span>SERVER-AUTHORITATIVE · LAG + RESOLUTION</span><span>PAPER MODE · NO GUARANTEED RETURNS</span></footer>
+  <footer><span>POLY/EDGE V3</span><span>SERVER-AUTHORITATIVE · LAG V4 RISK FILTERS</span><span>PAPER MODE · NO GUARANTEED RETURNS</span></footer>
 </div>
 <script src="/poly.js" defer></script>
 <script src="/poly-demo.js" defer></script>
