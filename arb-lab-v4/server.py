@@ -17,6 +17,7 @@ import httpx
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
+from poly_server_demo import engine as poly_server_engine
 
 ROOT = Path(__file__).resolve().parent
 JUPITER = 'https://api.jup.ag/swap/v2'
@@ -104,8 +105,13 @@ def _load_demo_sessions():
 async def load_poly_demo_state():
     _load_demo_sessions()
 
+@app.on_event('startup')
+async def start_poly_server_demo():
+    await poly_server_engine.start()
+    print('POLY_SERVER_DEMO_STARTED',flush=True)
+
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'atomic_bundle_execution':True}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'poly_server_demo':poly_server_engine.feed,'atomic_bundle_execution':True}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -353,6 +359,14 @@ async def poly_demo_event(body:PolyDemoEvent):
         session['completedAt']=now
     _save_demo_sessions()
     return {'status':'ok','events':len(session['events'])}
+
+@app.get('/api/poly/demo/server')
+async def poly_demo_server():
+    return poly_server_engine.snapshot()
+
+@app.post('/api/poly/demo/server/reset')
+async def poly_demo_server_reset():
+    return await poly_server_engine.reset()
 
 @app.get('/api/poly/demo/latest')
 async def poly_demo_latest_report():
