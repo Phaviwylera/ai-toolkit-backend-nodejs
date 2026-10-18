@@ -36,7 +36,7 @@ footer{display:flex;justify-content:space-between;gap:16px;padding:12px 16px;bor
 .accountMetrics{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:1px;background:var(--line)}
 .metric{background:#070a09;padding:11px 10px;min-height:70px}.metric span{display:block;color:var(--dim);font-size:8px;letter-spacing:.1em}.metric b{display:block;margin-top:6px;font-size:15px;white-space:nowrap}.metric.equity b,.metric.pnl b{font-size:20px}.metric i{font-style:normal}
 .accountHero .position{margin:0;border:0;border-top:1px solid var(--line);border-radius:0;background:linear-gradient(90deg,rgba(108,255,169,.035),rgba(179,108,255,.025))}
-.auditMini{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:9px}
+.auditMini{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:9px}
 .auditMini>div{background:#070a0a;padding:9px}.auditMini span{display:block;color:var(--dim);font-size:8px;letter-spacing:.1em}.auditMini b{display:block;margin-top:4px}
 @media(max-width:1150px){.accountMetrics{grid-template-columns:repeat(5,1fr)}}
 @media(max-width:760px){.accountHero{margin:8px 8px 0}.accountHeroTop{align-items:flex-start;flex-direction:column}.accountMetrics{grid-template-columns:repeat(3,1fr)}.metric.equity b,.metric.pnl b{font-size:17px}.auditMini{grid-template-columns:1fr 1fr}}
