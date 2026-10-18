@@ -26,10 +26,10 @@
 
   function renderEvents(events){
     const body=$('demoTape');if(!body)return;body.replaceChildren();
+    set('historyCount',String(Array.isArray(events)?events.length:0)+' EVENTS');
     if(!Array.isArray(events)||!events.length){
       const e=document.createElement('div');e.className='empty';e.textContent='No paper order yet. Decision audit above shows why.';body.append(e);return;
     }
-    set('historyCount',String(Array.isArray(events)?events.length:0)+' EVENTS');
     for(const x of events.slice(0,200)){
       const row=document.createElement('div');row.className='demoRow';
       const vals=[
@@ -78,7 +78,7 @@
       const side=p.position.side||'—',key=side==='UP'?'up':'down';
       const bid=Number(j.bbo?.[key]?.bid);
       const txt=side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—');
-      set('demoPosition',txt,'warn');set('positionForensic',txt,'warn');
+      set('demoPosition',txt,'warn');set('positionForensic',txt);
     }else{set('demoPosition','NO OPEN PAPER POSITION');set('positionForensic','NO OPEN PAPER POSITION');}
 
     set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':j.mode==='RISK_LOCK'?'bad':'warn');
