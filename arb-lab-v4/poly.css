@@ -22,3 +22,8 @@
 .reasonGrid>div{background:#09070c;padding:8px}
 .reasonGrid b{display:block;margin-top:4px}
 @media(max-width:900px){.demoWhy{grid-template-columns:1fr}.reasonGrid{grid-template-columns:1fr 1fr}}
+
+.logTools{display:flex;align-items:center;gap:10px;margin-top:10px}
+.logTools button{width:auto;min-width:250px;margin:0}
+.logTools span{color:var(--dim);font-size:9px;line-height:1.4}
+@media(max-width:900px){.logTools{align-items:stretch;flex-direction:column}.logTools button{width:100%}}
