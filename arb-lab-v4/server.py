@@ -185,6 +185,7 @@ def _poly_best(book,side):
 @app.on_event('startup')
 async def verify_polymarket_feeds():
     global poly_selftest
+    step='gamma'
     try:
         now=int(time.time());bucket=(now//300)*300;market=None
         for ts in [bucket,bucket+300,bucket-300]:
@@ -195,15 +196,17 @@ async def verify_polymarket_feeds():
         if not market: raise RuntimeError('current market not found')
         outcomes=_poly_jsonish(market.get('outcomes'));tokens=_poly_jsonish(market.get('clobTokenIds'))
         if len(tokens)<2 or len(tokens)!=len(outcomes): raise RuntimeError('token mapping unavailable')
+        step='clob'
         book=await external_call('GET',POLY_CLOB+'/book',params={'token_id':str(tokens[0])})
         if not isinstance(book,dict): raise RuntimeError('book unavailable')
+        step='binance'
         hist=await external_call('GET',BINANCE_REST+'/api/v3/klines',params={'symbol':'BTCUSDT','interval':'1m','limit':'5'})
         if not isinstance(hist,list) or not hist: raise RuntimeError('BTC history unavailable')
         poly_selftest='ok'
         print(f"POLY_SELFTEST_OK slug={market.get('slug')} outcomes={outcomes}",flush=True)
     except Exception as exc:
-        poly_selftest=f'error:{type(exc).__name__}'
-        print(f"POLY_SELFTEST_FAILED {type(exc).__name__} {getattr(exc,'detail','')}",flush=True)
+        poly_selftest=f'error:{step}:{type(exc).__name__}'
+        print(f"POLY_SELFTEST_FAILED step={step} type={type(exc).__name__} detail={getattr(exc,'detail','')}",flush=True)
 
 @app.get('/api/poly/current')
 async def poly_current():
