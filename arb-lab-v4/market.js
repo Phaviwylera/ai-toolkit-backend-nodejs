@@ -92,7 +92,7 @@
       const r=await fetch('/api/live-market',{cache:'no-store'});
       const j=await r.json();
       if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
-      if(j.latest){renderLatest(j.latest);if(j.venue){set('venueSpread',Number(j.venue.crossVenueSpreadBps||0).toFixed(2)+' bps');set('momentum1h',(Number(j.venue.momentum1hPct||0)>=0?'+':'')+Number(j.venue.momentum1hPct||0).toFixed(2)+'%')}set('dislocationScore',Number(j.latest.dislocationScore||0).toFixed(0)+' / 100');renderHistory(j.history)}
+      if(j.latest){renderLatest(j.latest);set('routeVenues',(j.latest.routeVenues||[]).join(' · ')||'Jupiter route');set('momentumShort',(Number(j.latest.shortMomentumBps||0)>=0?'+':'')+Number(j.latest.shortMomentumBps||0).toFixed(2)+' bps');set('dislocationScore',Number(j.latest.dislocationScore||0).toFixed(0)+' / 100');renderHistory(j.history)}
       else {set('scanStatus','SERVER SCANNER WARMING UP');setClass('scanStatus','amberText');set('networkState','SCANNER WARMING')}
     }catch(e){
       set('scanStatus','LIVE FEED ERROR');setClass('scanStatus','red');set('networkState','FEED ERROR');set('scanHint','Live feed error: '+e.message);
