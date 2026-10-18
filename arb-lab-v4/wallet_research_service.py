@@ -12,8 +12,32 @@ async def launch(wallet=TARGET_WALLET,copy=True):
     if STATE.get("task") and not STATE["task"].done():return
     r=WalletResearch(wallet);STATE["runner"]=r;STATE["wallet"]=wallet
     async def go():
-        try:await r.run(copy=copy)
-        except Exception:pass
+        async def heartbeat():
+            last=None
+            while True:
+                await asyncio.sleep(10)
+                p=dict(r.progress)
+                if p!=last:
+                    print("WALLET_RESEARCH_PROGRESS",p,flush=True)
+                    last=p
+        hb=asyncio.create_task(heartbeat())
+        try:
+            rep=await r.run(copy=copy)
+            print("WALLET_RESEARCH_COMPLETE",{
+                "wallet":wallet,
+                "coverage":rep.get("coverage"),
+                "feeModel":(rep.get("feeReconciliation") or {}).get("selected"),
+                "pnl":(rep.get("reconstructed") or {}).get("pnl"),
+                "pre2026":(rep.get("persistence") or {}).get("pre2026"),
+                "y2026":(rep.get("persistence") or {}).get("2026"),
+                "strategy":rep.get("strategy"),
+                "copyTest":rep.get("copyTest"),
+                "wash":rep.get("washLowerBound")
+            },flush=True)
+        except Exception as exc:
+            print("WALLET_RESEARCH_ERROR",type(exc).__name__,str(exc),flush=True)
+        finally:
+            hb.cancel()
     STATE["task"]=asyncio.create_task(go())
 
 @app.on_event("startup")
