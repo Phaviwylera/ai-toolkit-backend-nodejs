@@ -63,22 +63,33 @@ const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
     set('downBbo',(num(down.bid)==null?'—':fmt(down.bid,3))+' / '+(num(down.ask)==null?'—':fmt(down.ask,3)));
     set('upAsk',num(up.ask)==null?'—':pct(up.ask));set('downAsk',num(down.ask)==null?'—':pct(down.ask));
 
-    const pair=j.pair||{};
+    const pair=j.pair||{},inv=pair.inventory||paper.inventory||null;
     const pairEdge=num(pair.lockedEdgePerShare),pairCost=num(pair.takerPairCost),pairRaw=num(pair.rawPairCost);
-    const residual=paper.position?((paper.position.side||'NONE')+' '+fmt(paper.position.shares,2)+' sh'):'NONE';
+    let residual='NONE',residualWarn=false,invQuote='—';
+    if(paper.position){
+      residual=(paper.position.side||'NONE')+' '+fmt(paper.position.shares,2)+' sh';residualWarn=true;
+    }else if(inv){
+      const upLots=Array.isArray(inv.upLots)?inv.upLots:[],dnLots=Array.isArray(inv.downLots)?inv.downLots:[];
+      const upSh=upLots.reduce((a,x)=>a+Number(x.shares||0),0),dnSh=dnLots.reduce((a,x)=>a+Number(x.shares||0),0);
+      if(upSh>dnSh+1e-9){residual='UP '+fmt(upSh-dnSh,2)+' sh';residualWarn=true}
+      else if(dnSh>upSh+1e-9){residual='DOWN '+fmt(dnSh-upSh,2)+' sh';residualWarn=true}
+      if(inv.quote)invQuote=String(inv.quote.side||'').toUpperCase()+' '+(Number(inv.quote.price||0)*100).toFixed(1)+'c';
+    }
     const lockedPnl=Number(paper.lockedPairPnl||0);
     set('pairRaw',pairRaw==null?'—':pairRaw.toFixed(4));
     set('pairCost',pairCost==null?'—':pairCost.toFixed(4));
     set('pairEdge',pairEdge==null?'—':((pairEdge>=0?'+':'')+(pairEdge*100).toFixed(2)+'c'),pairEdge>0?'good':'bad');
-    set('makerPair',num(pair.makerQuoteSum)==null?'—':Number(pair.makerQuoteSum).toFixed(4));
+    set('makerPair',invQuote);
     set('matchedSets',fmt(paper.matchedSets||0,2));
     set('lockedPairPnl',(lockedPnl>=0?'+USD ':'-USD ')+Math.abs(lockedPnl).toFixed(4),lockedPnl>=0?'good':'bad');
     set('avgPairCost',num(paper.avgMatchedSetCost)==null?'—':Number(paper.avgMatchedSetCost).toFixed(4));
-    set('residualState',residual,paper.position?'warn':'good');
-    set('pairState',pair.directEligible?'LOCKABLE NOW':(pair.hedge&&pair.hedge.eligible?'HEDGE READY':'SCANNING'),(pair.directEligible||(pair.hedge&&pair.hedge.eligible))?'good':'warn');
+    set('residualState',residual,residualWarn?'warn':'good');
+    const invState=inv&&inv.status?String(inv.status):'SCANNING';
+    const pairStateText=pair.directEligible?'LOCKABLE NOW':(pair.hedge&&pair.hedge.eligible?'HEDGE READY':(invState==='RESIDUAL'?'V12 RESIDUAL':invState==='QUOTING'?'V12 QUOTING':invState==='MERGED'?'V12 MERGED':'V12 SCANNING'));
+    set('pairState',pairStateText,(pair.directEligible||(pair.hedge&&pair.hedge.eligible)||invState==='MERGED')?'good':invState==='RESIDUAL'?'warn':'');
     set('orbPairCost',pairCost==null?'—':pairCost.toFixed(4));
     set('orbMatched',fmt(paper.matchedSets||0,2));
-    set('orbResidual',residual,paper.position?'warn':'good');
+    set('orbResidual',residual,residualWarn?'warn':'good');
 
     set('spotPrice',num(j.spot)==null?'$—':'$'+fmt(j.spot,2));
     set('mobileDockBtc',num(j.spot)==null?'—':'$'+fmt(j.spot,0));
