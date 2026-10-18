@@ -13,6 +13,9 @@
   const fmt=(v,d=2)=>num(v)!==null?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
   const pct=v=>num(v)!==null?(Number(v)*100).toFixed(1)+'%':'—';
   const bps=v=>num(v)!==null?(Number(v)>=0?'+':'')+Number(v).toFixed(2)+' bps':'—';
+  const istClock=d=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
+  const istTape=d=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
+  const istMarket=ts=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(Number(ts)*1000));
   const set=(id,val,cls='')=>{const e=$(id);if(!e)return;e.textContent=val;if(cls)e.className=cls};
 
   function syncPublicState(j){
@@ -30,9 +33,9 @@
     const now=Number(j.serverTime)||Date.now()/1000,left=Math.max(0,(Number(m.endTs)||now)-now);
     const feedLive=j.feed?.market==='live'&&j.feed?.clob==='live'&&j.feed?.rtds==='live';
     set('feedStatus',feedLive?'SERVER LIVE':'SYNCING',feedLive?'good':'warn');
-    set('clock',new Date(now*1000).toISOString().slice(11,19)+' UTC');
+    set('clock',istClock(new Date(now*1000))+' IST');
     set('marketState',m.acceptingOrders?'ACCEPTING ORDERS':'READ ONLY',m.acceptingOrders?'good':'warn');
-    set('question',m.question||'Bitcoin Up or Down - 5 minute');
+    set('question',m.startTs&&m.endTs?('Bitcoin Up or Down · '+istMarket(m.startTs)+' – '+istMarket(m.endTs)+' IST'):(m.question||'Bitcoin Up or Down · 5m'));
     set('timeLeft',String(Math.floor(left/60)).padStart(2,'0')+':'+String(Math.floor(left%60)).padStart(2,'0'));
     set('volume','$'+fmt(m.volume,0));set('liquidity','$'+fmt(m.liquidity,0));set('minOrder',m.minOrderSize?fmt(m.minOrderSize,2)+' shares':'—');
     if($('marketLink')&&m.slug)$('marketLink').href='https://polymarket.com/event/'+encodeURIComponent(m.slug);
@@ -71,7 +74,7 @@
     set('edgeState',op?'OPPORTUNITY':'NO TRADE',op?'good':'warn');
     set('decision',(op?'OPPORTUNITY - ':'NO TRADE - ')+(j.mode||'WAIT')+' - '+decision.replace(/^OPPORTUNITY_/,'').replaceAll('_',' '),op?'good':'warn');
     set('confidence',paper.position?.confidence!=null?Number(paper.position.confidence).toFixed(0)+'%':(num(model.reliability)!=null?(Number(model.reliability)*100).toFixed(0)+'%':'—'));
-    set('edgeWhy',c.side?('Best '+c.side+' - fair '+pct(fair)+' vs ask '+pct(ask)+' - net '+(bestNet*100).toFixed(2)+'c - lead '+Number(model.leadBps||0).toFixed(2)+' bps.'):'Waiting for executable order book.');
+    set('edgeWhy',c.side?('ALIGNED '+c.side+' · fair '+pct(fair)+' vs ask '+pct(ask)+' · round-trip edge '+(bestNet*100).toFixed(2)+'c · lead '+Number(model.leadBps||0).toFixed(2)+' bps · 5s impulse '+Number(model.impulse5Bps||0).toFixed(2)+' bps.'):'Waiting for executable order book.');
 
     set('clobGate',j.feed?.clob==='live'?'LIVE':String(j.feed?.clob||'WARMING').toUpperCase(),j.feed?.clob==='live'?'good':'warn');
     set('rtdsGate',j.feed?.rtds==='live'?'LIVE':String(j.feed?.rtds||'WARMING').toUpperCase(),j.feed?.rtds==='live'?'good':'warn');
@@ -106,7 +109,7 @@
     if(!state.tape.length){const e=document.createElement('div');e.className='empty';e.textContent='No trade-quality signal yet.';body.append(e);return}
     for(const x of state.tape){
       const r=document.createElement('div');r.className='tapeRow';
-      const vals=[x.t.toLocaleTimeString(),x.side,(x.ask*100).toFixed(1)+'c',pct(x.fair),(x.net*100).toFixed(2)+'c',x.state];
+      const vals=[istTape(x.t)+' IST',x.side,(x.ask*100).toFixed(1)+'c',pct(x.fair),(x.net*100).toFixed(2)+'c',x.state];
       vals.forEach((v,i)=>{const e=document.createElement(i===5?'b':'span');e.textContent=v;if(i===4||i===5)e.className='good';r.append(e)});body.append(r);
     }
   }
