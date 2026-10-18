@@ -6,6 +6,7 @@
   function set(id,val,cls=''){const e=$(id);if(!e)return;e.textContent=val;if(cls)e.className=cls}
   function money(n,d=4){n=Number(n)||0;return (n>=0?'+$':'-$')+Math.abs(n).toFixed(d)}
   function pct(n,d=1){return (Number(n)||0).toFixed(d)+'%'}
+  const istTime=ts=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(Number(ts)*1000))+' IST';
   function feedText(feed){
     if(!feed)return 'WARMING';
     return 'MARKET '+String(feed.market||'—').toUpperCase()+' · CLOB '+String(feed.clob||'—').toUpperCase()+' · RTDS '+String(feed.rtds||'—').toUpperCase();
@@ -31,7 +32,7 @@
     for(const x of events.slice(0,35)){
       const row=document.createElement('div');row.className='demoRow';
       const vals=[
-        new Date((Number(x.t)||0)*1000).toLocaleTimeString(),
+        istTime(x.t),
         x.action||'—',x.side||'—',
         Number.isFinite(Number(x.price))?(Number(x.price)*100).toFixed(1)+'¢':'—',
         Number.isFinite(Number(x.pnl))?(Number(x.pnl)>=0?'+$':'-$')+Math.abs(Number(x.pnl)).toFixed(4):'—',
@@ -53,6 +54,7 @@
     set('demoEquity','$'+eq.toFixed(4),eq>=start?'good':'bad');
     set('demoPnl',money(real,4),real>=0?'good':'bad');
     set('demoTrades',String(p.trades||0));
+    set('demoWins',String(p.wins||0));set('demoLosses',String(p.losses||0));
     set('demoWinRate',p.trades?pct(p.winRatePct||0,1):'—');
     set('demoFees','$'+Number(p.fees||0).toFixed(4));
     set('demoDrawdown',pct((Number(p.maxDrawdown)||0)*100,2));
@@ -60,8 +62,10 @@
     set('demoNoFill',String(p.nofills||0));
     const left=Math.max(0,Math.floor((Number(p.endsAt)||0)-Number(j.serverTime||Date.now()/1000)));
     set('demoLeft',String(Math.floor(left/3600)).padStart(2,'0')+':'+String(Math.floor((left%3600)/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0'));
-    const status=p.status==='complete'?'COMPLETE':'SERVER LIVE PAPER';
-    set('demoStatus',status,p.status==='complete'?'warn':'good');
+    const status=p.status==='complete'?'COMPLETE':p.status==='risk_locked'?'RISK LOCKED':'SERVER LIVE PAPER';
+    set('demoStatus',status,p.status==='risk_locked'?'bad':p.status==='complete'?'warn':'good');
+    const riskText=p.status==='risk_locked'?(p.riskLockReason||'LOSS LIMIT'):(Number(p.cooldownUntil||0)>Number(j.serverTime||0)?'COOLDOWN':'ARMED');
+    set('riskState',riskText,p.status==='risk_locked'?'bad':riskText==='COOLDOWN'?'warn':'good');
 
     if(p.position){
       const side=p.position.side||'—',key=side==='UP'?'up':'down';
@@ -69,7 +73,7 @@
       set('demoPosition',side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—'),'warn');
     }else set('demoPosition','NO OPEN PAPER POSITION');
 
-    set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':'warn');
+    set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':j.mode==='RISK_LOCK'?'bad':'warn');
     if(j.candidate){
       set('demoBest',(j.candidate.side||'—')+' ask '+(Number(j.candidate.ask||0)*100).toFixed(1)+'¢ · fair '+(Number(j.candidate.fair||0)*100).toFixed(1)+'% · net '+(Number(j.candidate.net||0)*100).toFixed(2)+'¢');
     }else set('demoBest','—');
