@@ -1364,7 +1364,10 @@ class PolyServerDemo:
                 p['status']='complete';self._save();continue
             await self._maker_step()
             pair=self._pair_state();self.latest_pair=pair
-            if pair.get('directEligible') and not p.get('position') and not self.pending and self.market and (float(self.market.get('endTs') or 0)-now)>12:
+            if pair.get('directEligible') and not p.get('position') and not self._inventory_has_residual() and not self.pending and self.market and (float(self.market.get('endTs') or 0)-now)>12:
+                inv=p.get('inventory')
+                if isinstance(inv,dict) and inv.get('quote'):
+                    self._inventory_cancel_quote(inv,'direct executable complete set takes priority')
                 await self._try_direct_pair(pair)
             m=self._model();self.latest_model=m
             if m:await self._inventory_step(m)
