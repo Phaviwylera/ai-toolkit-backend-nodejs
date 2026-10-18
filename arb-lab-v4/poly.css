@@ -140,3 +140,81 @@ body{overflow-x:hidden!important}
   .historyTableHead,.demoRow,.fullOppRow,.opportunityCols{grid-template-columns:.85fr .65fr .55fr .65fr .65fr 1.4fr;font-size:6px;gap:4px}
   .gateDetailGrid,.reasonGrid{grid-template-columns:1fr}
 }
+
+
+/* V9.2 mobile-first workstation */
+.mobileDock{display:none}
+@media(max-width:900px){
+  :root{--mobileTop:48px;--mobileDock:58px}
+  html{scroll-behavior:smooth;scroll-padding-top:calc(var(--mobileTop) + 8px)}
+  body{-webkit-text-size-adjust:100%;touch-action:pan-y;background:#050708}
+  .app{padding-bottom:calc(var(--mobileDock) + env(safe-area-inset-bottom))}
+  .topbar{
+    height:var(--mobileTop)!important;min-height:var(--mobileTop);padding:0 8px;
+    padding-top:env(safe-area-inset-top);top:0;backdrop-filter:blur(14px)
+  }
+  .brand{gap:7px}.mark{width:30px;height:30px;flex:0 0 30px}.brand b{font-size:11px}.brand small{display:none!important}
+  .statusCluster{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;max-width:68vw;justify-content:flex-start;padding-bottom:1px}
+  .statusCluster::-webkit-scrollbar{display:none}.statusPill{min-height:30px;padding:5px 8px;font-size:8px}.microBtn{min-height:30px;min-width:42px}
+  .ticker{position:relative!important;top:auto!important;height:24px}.tickerTrack{padding:6px 10px 5px;animation-duration:38s}
+  .workstation{padding:5px!important}
+  .liveViewport{display:flex!important;flex-direction:column!important;height:auto!important;min-height:0!important;gap:6px!important}
+  .hudTop,.hudBottom{display:flex!important;flex-direction:column!important;gap:6px!important}
+  .panel{border-radius:6px}
+  #mobilePnl,#mobilePrice,#mobileMarket,#mobileNeural,#mobileHistory{scroll-margin-top:calc(var(--mobileTop) + 8px)}
+  .panelTop{height:30px;padding:7px 9px;font-size:8px}.panelTop em{font-size:8px}
+  .pnlPanel{height:auto!important;min-height:258px!important}.pnlBig{padding:12px 12px 2px}.pnlBig small{font-size:8px}.pnlBig b{font-size:40px!important;line-height:1}
+  .pnlDelta{padding:5px 12px 9px;font-size:8px}.pnlDelta b{font-size:15px}
+  .pnlStrip{grid-template-columns:repeat(4,minmax(0,1fr))!important}.pnlStrip>div{padding:8px 7px;min-height:48px}.pnlStrip span{font-size:7px}.pnlStrip b{font-size:10px;margin-top:3px}
+  .coreMini>div{padding:8px 7px}.coreMini span{font-size:7px}.coreMini b{font-size:10px}
+  .pricePanel{height:300px!important;grid-template-rows:30px 42px minmax(0,1fr) 34px!important}.priceHead{padding:5px 10px;gap:10px;overflow-x:auto;white-space:nowrap}.priceHead>b{font-size:21px}.priceHead span{font-size:8px}
+  .priceFoot span{padding:7px;font-size:7px}.priceFoot b{font-size:9px}
+  .lifePanel{height:260px!important;grid-template-rows:30px 26px minmax(0,1fr) 46px!important}.marketName{font-size:9px;padding:6px 9px}
+  .bookMini span{padding:7px 6px;font-size:7px}.bookMini b{font-size:9px}
+  .resolutionPanel{height:300px!important;grid-template-rows:30px 48px minmax(0,1fr) 46px!important}.resolutionHead>div{padding:7px}.resolutionHead span{font-size:7px}.resolutionHead b{font-size:13px}
+  .resolutionGrid{grid-template-columns:repeat(4,minmax(58px,1fr))!important;gap:4px;padding:6px;overflow:hidden}.resolutionCell{padding:5px}.resolutionCell span,.resolutionCell small{font-size:6px}.resolutionCell b{font-size:14px;margin:3px 0}
+  .pairTiny span{padding:7px 5px;font-size:7px}.pairTiny b{font-size:9px}
+  .neuralPanel{height:520px!important;grid-template-rows:auto minmax(0,1fr) auto!important}.neuralHead{min-height:54px;height:auto!important;align-items:flex-start;flex-direction:column;padding:8px 9px}.neuralStats{width:100%;overflow-x:auto;scrollbar-width:none;gap:12px;padding:2px 0 1px}.neuralStats::-webkit-scrollbar{display:none}.neuralStats span{font-size:7px}.neuralStats b{font-size:8px}
+  .neuralCanvasWrap{min-height:392px}.neuralBottom{grid-template-columns:1fr!important}.neuralBottom>span{padding:7px 8px;font-size:7px;white-space:normal;line-height:1.35}
+  .activityRail{height:118px!important;grid-template-columns:1fr!important}.railTitle{border-right:0;border-bottom:1px solid var(--line);padding:7px 9px}.railTitle span{font-size:7px}.railTitle b{font-size:8px;margin-top:2px}
+  .tapeBody{overflow-x:auto!important;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding:5px}.tapeRow{min-width:190px!important;scroll-snap-align:start;padding:7px 8px;font-size:7px}
+  .matrixPanel,.hedgePanel{height:300px!important;grid-template-rows:30px minmax(0,1fr) 48px!important}.matrixFoot,.flowFoot{grid-template-columns:repeat(2,1fr)!important}.matrixFoot span,.flowFoot span{padding:7px 6px;font-size:7px}.matrixFoot b,.flowFoot b{font-size:8px}
+  .forensicDeck{margin-top:10px;padding:8px 0 calc(26px + var(--mobileDock))!important}.forensicHeader{padding:12px 10px!important}.forensicHeader span{font-size:10px}.forensicHeader small{font-size:8px;line-height:1.45}.downloadLogPrimary{min-height:46px;font-size:9px;border-radius:4px}
+  .forensicStats{grid-template-columns:repeat(2,1fr)!important}.forensicStats>div{padding:10px 9px;min-height:58px}.forensicStats span{font-size:7px}.forensicStats b{font-size:11px}
+  .forensicGrid,.primaryHistory{grid-template-columns:1fr!important;gap:7px}.historyHead{padding:10px}.historyHead span{font-size:8px}.historyHead small{font-size:7px;line-height:1.4}.historyHead>b{font-size:8px}
+  .historyPanel{overflow:hidden}.historyTableHead,.demoRow,.fullOppRow,.opportunityCols{min-width:680px;grid-template-columns:92px 88px 55px 65px 72px minmax(260px,1fr)!important;gap:6px;font-size:7px;padding:8px}
+  .forensicTape,.fullOpportunityTape{overflow-x:auto!important;overflow-y:auto!important;max-height:360px;-webkit-overflow-scrolling:touch}
+  .reasonGrid,.gateDetailGrid{grid-template-columns:1fr 1fr!important}.reasonGrid>div,.gateDetailGrid>div{padding:10px}.reasonGrid span,.gateDetailGrid span{font-size:7px}.reasonGrid b,.gateDetailGrid b{font-size:8px;line-height:1.45}
+  .positionForensic,.marketLinkFull,.forensicNote{font-size:8px;padding:12px}
+  .mobileDock{
+    position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:0;right:0;bottom:0;z-index:60;
+    min-height:var(--mobileDock);padding:4px 5px calc(4px + env(safe-area-inset-bottom));
+    background:rgba(5,8,9,.96);border-top:1px solid var(--line);backdrop-filter:blur(16px)
+  }
+  .mobileDock a{
+    display:flex;min-width:0;min-height:48px;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    color:var(--dim);text-decoration:none;border-right:1px solid rgba(255,255,255,.045);padding:4px 3px
+  }
+  .mobileDock a:last-child{border-right:0}.mobileDock span{font-size:6px;letter-spacing:.08em}.mobileDock b{color:var(--text);font-size:8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(max-width:560px){
+  .statusCluster{max-width:64vw}.statusPill:nth-of-type(2),.statusPill:nth-of-type(3){display:none!important}
+  .pnlStrip{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .pricePanel{height:285px!important}.lifePanel{height:250px!important}.resolutionPanel{height:286px!important}.neuralPanel{height:500px!important}.neuralCanvasWrap{min-height:370px}
+  .resolutionGrid{grid-template-columns:repeat(3,minmax(54px,1fr))!important}
+  .reasonGrid,.gateDetailGrid{grid-template-columns:1fr!important}
+  .mobileDock span{font-size:5.5px}.mobileDock b{font-size:7.5px}
+}
+@media(max-width:380px){
+  .brand b{font-size:10px}.mark{width:27px;height:27px;flex-basis:27px}
+  .statusCluster{max-width:61vw}.statusPill{padding:4px 6px;font-size:7px}
+  .pnlBig b{font-size:34px!important}
+  .neuralPanel{height:470px!important}.neuralCanvasWrap{min-height:345px}
+}
+@media(max-width:900px) and (orientation:landscape){
+  .liveViewport{display:grid!important;grid-template-columns:1fr 1fr!important;align-items:stretch}
+  .hudTop,.hudBottom{display:contents!important}
+  #mobilePnl,#mobilePrice,#mobileMarket,.resolutionPanel,.matrixPanel,.hedgePanel{height:280px!important}
+  .neuralPanel{grid-column:1/-1;height:430px!important}.activityRail{grid-column:1/-1}
+  .forensicDeck{grid-column:1/-1}
+}
