@@ -149,7 +149,7 @@
     requestAnimationFrame(drawOrb);
   }
 
-  let pollTimer=null,pollBusy=false,pollDelay=900;
+  let pollTimer=null,pollBusy=false,pollDelay=1000;
   function schedulePoll(delay=pollDelay){
     clearTimeout(pollTimer);
     pollTimer=setTimeout(poll,document.hidden?Math.max(1800,delay):delay);
@@ -170,8 +170,10 @@
         return;
       }
       if(!r.ok)throw new Error(j?.detail||('HTTP '+r.status));
-      pollDelay=900;
+      pollDelay=1000;
       render(j);
+      window.POLY_EDGE_LATEST_SNAPSHOT=j;
+      window.dispatchEvent(new CustomEvent('poly-edge-server-snapshot',{detail:j}));
       set('serverPing',Math.round(performance.now()-started)+' ms');
     }catch(e){
       pollDelay=Math.min(5000,Math.max(1500,pollDelay*1.5));
