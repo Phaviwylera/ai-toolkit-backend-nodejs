@@ -68,7 +68,7 @@
     set('demoNoFill',String(p.nofills||0));
     set('demoAttempts',String(p.executionAttempts||0));
     set('demoPostRejects',String(p.postLatencyRejects||0));
-    set('pairAttemptsView',String(Number(p.pairAttempts||0)+Number(p.makerQuotes||0)));
+    set('pairAttemptsView',String(Number(p.pairAttempts||0)+Number(p.inventoryQuotes||0)));
     set('matchedSetsHistory',Number(p.matchedSets||0).toFixed(2));
     set('lockedPairPnlHistory',money(p.lockedPairPnl||0,4),Number(p.lockedPairPnl||0)>=0?'good':'bad');
     set('avgPairCostHistory',Number.isFinite(Number(p.avgMatchedSetCost))?Number(p.avgMatchedSetCost).toFixed(4):'—');
@@ -85,17 +85,23 @@
       const txt=side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—');
       set('demoPosition',txt,'warn');set('positionForensic',txt);
     }else{
-      const mk=j.pair?.maker;
-      if(mk){
-        const upFilled=Number.isFinite(Number(mk.upFilledPrice)),downFilled=Number.isFinite(Number(mk.downFilledPrice));
-        if(upFilled!==downFilled){
-          const side=upFilled?'UP':'DOWN',key=side.toLowerCase(),entry=Number(upFilled?mk.upFilledPrice:mk.downFilledPrice),bid=Number(j.bbo?.[key]?.bid),shares=Number(mk.shares||0);
-          const txt='MAKER RESIDUAL '+side+' · '+shares.toFixed(2)+' shares · entry '+(entry*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—')+' · unrealized '+money(p.unrealizedPnl||0,4);
+      const inv=p.inventory||j.pair?.inventory;
+      if(inv){
+        const upLots=Array.isArray(inv.upLots)?inv.upLots:[],dnLots=Array.isArray(inv.downLots)?inv.downLots:[];
+        const calc=lots=>lots.reduce((a,x)=>({sh:a.sh+Number(x.shares||0),cost:a.cost+Number(x.cost||0)}),{sh:0,cost:0});
+        const up=calc(upLots),dn=calc(dnLots);
+        if(up.sh>dn.sh+1e-9||dn.sh>up.sh+1e-9){
+          const side=up.sh>dn.sh?'UP':'DOWN',obj=side==='UP'?up:dn,key=side.toLowerCase(),bid=Number(j.bbo?.[key]?.bid);
+          const shares=Math.abs(up.sh-dn.sh),unit=obj.sh?obj.cost/obj.sh:0;
+          const txt='V12 RESIDUAL '+side+' · '+shares.toFixed(2)+' shares · avg '+(unit*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—')+' · unrealized '+money(p.unrealizedPnl||0,4);
           set('demoPosition',txt,'warn');set('positionForensic',txt);
-        }else if(!upFilled&&!downFilled){
-          const txt='RESTING MAKER PAIR · UP '+(Number(mk.upQuote||0)*100).toFixed(1)+'¢ / DOWN '+(Number(mk.downQuote||0)*100).toFixed(1)+'¢';
+        }else if(inv.quote){
+          const txt='V12 '+String(inv.quote.kind||'').toUpperCase()+' QUOTE · '+String(inv.quote.side||'').toUpperCase()+' '+(Number(inv.quote.price||0)*100).toFixed(1)+'¢ · '+Number(inv.quote.shares||0).toFixed(2)+' shares';
           set('demoPosition',txt);set('positionForensic',txt);
-        }else{set('demoPosition','MATCHED MAKER SET · MERGE PENDING','good');set('positionForensic','MATCHED MAKER SET · MERGE PENDING');}
+        }else{
+          const txt='V12 INVENTORY IDLE · cycles '+Number(inv.cycles||0)+' / 3';
+          set('demoPosition',txt,'good');set('positionForensic',txt);
+        }
       }else{set('demoPosition','NO OPEN PAPER POSITION');set('positionForensic','NO OPEN PAPER POSITION');}
     }
 
