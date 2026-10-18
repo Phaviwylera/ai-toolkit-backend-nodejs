@@ -24,6 +24,8 @@ LAG_LEAD_MIN_BPS=0.50
 LAG_IMPULSE_MIN_BPS=0.15
 LAG_CONFIRM_SEC=2.50
 LAG_ROUNDTRIP_EDGE_MIN=0.04
+MAX_ENTRY_CHASE=0.05
+EXECUTION_LATENCY_SEC=0.35
 
 def _jsonish(v):
     if isinstance(v,list): return v
@@ -104,7 +106,7 @@ class PolyServerDemo:
             data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
             p=data.get('paper')
             now=time.time()
-            if not isinstance(p,dict) or int(p.get('version') or 0)!=5 or float(p.get('endsAt') or 0)<=now:
+            if not isinstance(p,dict) or int(p.get('version') or 0)!=6 or float(p.get('endsAt') or 0)<=now:
                 return False
             # Strip calculated presentation fields before resuming mutable state.
             p=dict(p)
@@ -139,12 +141,12 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':5,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':6,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
             'position':None,'events':[],'status':'running','lastOpportunityAt':0.0,
-            'signals':0,'candidatesSeen':0,'tradedMarkets':[],'cooldownUntil':0.0,
+            'signals':0,'candidatesSeen':0,'executionAttempts':0,'postLatencyRejects':0,'tradedMarkets':[],'cooldownUntil':0.0,
             'consecutiveLosses':0,'riskLockReason':None
         }
         self.reason_counts.clear()
@@ -613,39 +615,101 @@ class PolyServerDemo:
         if self.pending or not self.paper or self.paper.get('position'):return
         p=self.paper;market=self.market
         if time.time()>=p['endsAt']:return
-        min_sh=float(market.get('minOrderSize') or 0)
+        min_sh=max(5.0,float(market.get('minOrderSize') or 0))
         ask0=float(best['ask']);key='up' if best['side']=='UP' else 'down'
         size0=float(self.bbo[key].get('askSize') or 0)
-        unit=ask0+_fee_per_share(ask0)
-        risk_cash=min(p['cash'],MAX_TRADE_NOTIONAL)
-        affordable=math.floor((risk_cash/unit)*100)/100 if unit>0 else 0
-        shares=math.floor(min(affordable,size0 if size0>0 else affordable)*100)/100
-        if shares<min_sh or shares<=0:
+        risk_cash=min(float(p['cash']),MAX_TRADE_NOTIONAL)
+
+        # Use the exchange minimum quantity instead of spending the whole risk
+        # budget at the first quote. This leaves room for a fast marketable-limit
+        # reprice while still respecting the same max-notional cap.
+        shares=round(min_sh,2)
+        if size0>0 and size0<shares:
             p['blocked']+=1
-            self._record('BLOCK',side=best['side'],price=ask0,detail=f'min {min_sh:.2f} shares; affordable {shares:.2f} with 20 USD account')
+            self._record('BLOCK',side=best['side'],price=ask0,detail=f'best ask has only {size0:.2f} shares; need {shares:.2f}')
             return
+
+        tick=max(.001,float(market.get('minTickSize') or .01))
+        edge_budget=max(0.0,float(best.get('roundTripNet') or 0)-LAG_ROUNDTRIP_EDGE_MIN)
+        chase=min(MAX_ENTRY_CHASE,max(tick,edge_budget*.35))
+        max_price=min(.97,ask0+chase)
+
+        # Reduce max price until the minimum order still fits the risk budget
+        # including the taker fee.
+        while max_price>ask0 and shares*(max_price+_fee_per_share(max_price))>risk_cash+1e-9:
+            max_price=round(max(ask0,max_price-tick),6)
+        initial_total=shares*(ask0+_fee_per_share(ask0))
+        if initial_total>risk_cash+1e-9:
+            p['blocked']+=1
+            self._record('BLOCK',side=best['side'],price=ask0,detail=f'{shares:.2f}-share minimum costs USD {initial_total:.4f}; risk cap USD {risk_cash:.2f}')
+            return
+
         self.pending=True
-        tick=max(.001,float(market.get('minTickSize') or .01));max_price=min(.99,ask0+tick)
-        self._record('ORDER',side=best['side'],price=ask0,detail=f'paper FAK buy {shares:.2f} shares max {max_price:.3f}')
-        await asyncio.sleep(.35)
+        p['executionAttempts']=int(p.get('executionAttempts') or 0)+1
+        self._record(
+            'ORDER',side=best['side'],price=ask0,
+            detail=f'paper adaptive FAK {shares:.2f} shares; start {ask0:.3f}; max {max_price:.3f}; RT edge {best["roundTripNet"]*100:.2f}c'
+        )
+        await asyncio.sleep(EXECUTION_LATENCY_SEC)
         try:
             ask=self.bbo[key].get('ask');avail=float(self.bbo[key].get('askSize') or 0)
-            if ask is None or float(ask)>max_price or avail<shares:
-                p['nofills']+=1;self._record('NOFILL',side=best['side'],price=float(ask) if ask is not None else None,detail='book moved during 350ms latency');return
-            ask=float(ask);fee=shares*_fee_per_share(ask);total=shares*ask+fee
-            if total>p['cash']+1e-9:
-                p['nofills']+=1;self._record('NOFILL',side=best['side'],price=ask,detail='live fill exceeds remaining cash');return
+            if ask is None:
+                p['nofills']+=1;p['postLatencyRejects']=int(p.get('postLatencyRejects') or 0)+1
+                self._record('NOFILL',side=best['side'],detail='post-latency ask disappeared')
+                return
+            ask=float(ask)
+
+            # Recompute the actual lag/model state at the moment the simulated
+            # order reaches the book. Never fill merely because the old signal
+            # was strong.
+            fresh_m=self._model()
+            fresh_best=self._candidate(fresh_m) if fresh_m else None
+            direction=1 if best['side']=='UP' else -1
+            fresh_lead=(float(fresh_m.get('leadBps') or 0)*direction) if fresh_m else -999
+            fresh_impulse=(float(fresh_m.get('impulse5Bps') or 0)*direction) if fresh_m else -999
+            fresh_edge=float(fresh_best.get('roundTripNet') or -999) if fresh_best and fresh_best.get('side')==best['side'] else -999
+            total=shares*(ask+_fee_per_share(ask))
+
+            reject=None
+            if ask>max_price+1e-9:
+                reject=f'ask moved {ask0:.3f}->{ask:.3f}, above adaptive max {max_price:.3f}'
+            elif avail<shares:
+                reject=f'only {avail:.2f} shares remain at live ask; need {shares:.2f}'
+            elif total>risk_cash+1e-9:
+                reject=f'live cost USD {total:.4f} exceeds risk cap USD {risk_cash:.2f}'
+            elif not fresh_best or fresh_best.get('side')!=best['side']:
+                reject='post-latency lag direction changed'
+            elif fresh_lead<LAG_LEAD_MIN_BPS*.75:
+                reject=f'post-latency lead weakened to {fresh_lead:.2f} bps'
+            elif fresh_impulse<-0.05:
+                reject=f'post-latency impulse reversed to {fresh_impulse:.2f} bps'
+            elif fresh_edge<LAG_ROUNDTRIP_EDGE_MIN:
+                reject=f'post-latency round-trip edge fell to {fresh_edge*100:.2f}c'
+
+            if reject:
+                p['nofills']+=1;p['postLatencyRejects']=int(p.get('postLatencyRejects') or 0)+1
+                self._record('NOFILL',side=best['side'],price=ask,detail=reject)
+                return
+
+            fee=shares*_fee_per_share(ask);notional=shares*ask;total=notional+fee
             p['cash']-=total;p['fees']+=fee
             p.setdefault('tradedMarkets',[])
             if market['slug'] not in p['tradedMarkets']:
                 p['tradedMarkets'].append(market['slug'])
                 p['tradedMarkets']=p['tradedMarkets'][-24:]
-            p['position']={'marketSlug':market['slug'],'side':best['side'],'entryPrice':ask,'shares':shares,
-                           'entryNotional':shares*ask,'entryFee':fee,'entryTotalCost':total,'entryAt':time.time(),
-                           'openRef':self.open_ref,'modelFair':best['fair'],'confidence':confidence,
-                           'mode':self.latest_mode,'entryNetEdge':best['net'],'entryLeadBps':m.get('leadBps',0),
-                           'entryImpulse5Bps':m.get('impulse5Bps',0),'entryLagScore':m.get('lagScore',0)}
-            self._record('BUY',side=best['side'],price=ask,detail=f'{self.latest_mode}; 2.5s confirmed; RT edge {best["roundTripNet"]*100:.2f}c; {shares:.2f} shares; fee USD {fee:.5f}')
+            p['position']={
+                'marketSlug':market['slug'],'side':best['side'],'entryPrice':ask,'shares':shares,
+                'entryNotional':notional,'entryFee':fee,'entryTotalCost':total,'entryAt':time.time(),
+                'openRef':self.open_ref,'modelFair':fresh_best['fair'],'confidence':confidence,
+                'mode':self.latest_mode,'entryNetEdge':fresh_edge,'entryLeadBps':fresh_m.get('leadBps',0),
+                'entryImpulse5Bps':fresh_m.get('impulse5Bps',0),'entryLagScore':fresh_m.get('lagScore',0),
+                'initialAsk':ask0,'adaptiveMaxPrice':max_price
+            }
+            self._record(
+                'BUY',side=best['side'],price=ask,
+                detail=f'{self.latest_mode}; adaptive fill after {int(EXECUTION_LATENCY_SEC*1000)}ms; {shares:.2f} shares; '
+                       f'ask {ask0:.3f}->{ask:.3f}; post-latency RT edge {fresh_edge*100:.2f}c; fee USD {fee:.5f}'
+            )
         finally:self.pending=False
 
     async def _try_sell(self,reason):
@@ -765,7 +829,8 @@ class PolyServerDemo:
             'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,'desk':self.latest_desk,
             'risk':{'maxTradeNotional':MAX_TRADE_NOTIONAL,'maxTradeLossUsd':MAX_TRADE_LOSS_USD,
                     'sessionLossLimitUsd':SESSION_LOSS_LIMIT_USD,'lagConfirmSec':LAG_CONFIRM_SEC,
-                    'alignmentSide':self.alignment_side,'alignmentAgeSec':max(0,time.time()-self.alignment_since) if self.alignment_since else 0},
+                    'alignmentSide':self.alignment_side,'alignmentAgeSec':max(0,time.time()-self.alignment_since) if self.alignment_since else 0,
+                    'executionLatencyMs':int(EXECUTION_LATENCY_SEC*1000),'maxEntryChase':MAX_ENTRY_CHASE},
             'history':list(self.visual_history)[-240:],
             'reasonCounts':dict(self.reason_counts),
             'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
