@@ -10,6 +10,7 @@ import re
 import time
 import asyncio
 import json
+import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 import httpx
@@ -34,6 +35,9 @@ market_live_status='warming-up'
 market_seq=0
 jito_selftest='pending'
 poly_selftest='pending'
+poly_demo_sessions={}
+poly_demo_latest=None
+POLY_DEMO_FILE=Path('/tmp/poly_demo_sessions.json')
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
 POLY_GAMMA='https://gamma-api.polymarket.com'
 POLY_CLOB='https://clob.polymarket.com'
@@ -73,6 +77,29 @@ async def poly_js():return FileResponse(ROOT/'poly.js',media_type='text/javascri
 @app.get('/poly.css')
 async def poly_css():return FileResponse(ROOT/'poly.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
+
+def _save_demo_sessions():
+    try:
+        payload={'latest':poly_demo_latest,'sessions':poly_demo_sessions}
+        POLY_DEMO_FILE.write_text(json.dumps(payload,separators=(',',':')),encoding='utf-8')
+    except Exception as exc:
+        print(f'POLY_DEMO_SAVE_FAILED {type(exc).__name__}',flush=True)
+
+def _load_demo_sessions():
+    global poly_demo_sessions,poly_demo_latest
+    try:
+        if POLY_DEMO_FILE.exists():
+            payload=json.loads(POLY_DEMO_FILE.read_text(encoding='utf-8'))
+            sessions=payload.get('sessions') or {}
+            if isinstance(sessions,dict):
+                poly_demo_sessions=sessions
+                poly_demo_latest=payload.get('latest')
+    except Exception as exc:
+        print(f'POLY_DEMO_LOAD_FAILED {type(exc).__name__}',flush=True)
+
+@app.on_event('startup')
+async def load_poly_demo_state():
+    _load_demo_sessions()
 
 @app.get('/health')
 async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'atomic_bundle_execution':True}
@@ -278,6 +305,63 @@ async def poly_btc_history():
         if a>0 and b>0: rets.append((b/a)-1)
     vol=(sum(r*r for r in rets)/len(rets))**0.5 if rets else 0
     return {'status':'ok','candles':out,'oneMinuteRmsPct':round(vol*100,5)}
+
+class PolyDemoStart(BaseModel):
+    startingBalance:float=Field(default=2.0,ge=0.5,le=10000)
+    durationSeconds:int=Field(default=10800,ge=300,le=86400)
+
+class PolyDemoEvent(BaseModel):
+    sessionId:str=Field(min_length=8,max_length=64)
+    eventType:str=Field(min_length=2,max_length=32)
+    payload:dict=Field(default_factory=dict)
+
+@app.post('/api/poly/demo/start')
+async def poly_demo_start(body:PolyDemoStart):
+    global poly_demo_latest
+    now=time.time()
+    sid='demo_'+uuid.uuid4().hex[:16]
+    session={
+        'sessionId':sid,'startedAt':now,'endsAt':now+body.durationSeconds,
+        'startingBalance':round(body.startingBalance,6),
+        'lastSeenAt':now,'events':[],'latestSnapshot':None,'status':'running'
+    }
+    poly_demo_sessions[sid]=session
+    poly_demo_latest=sid
+    # Keep memory bounded.
+    if len(poly_demo_sessions)>20:
+        oldest=sorted(poly_demo_sessions.values(),key=lambda x:x.get('startedAt',0))[:-20]
+        for item in oldest: poly_demo_sessions.pop(item.get('sessionId',''),None)
+    _save_demo_sessions()
+    return {'status':'ok','sessionId':sid,'startedAt':now,'endsAt':session['endsAt'],'startingBalance':session['startingBalance']}
+
+@app.post('/api/poly/demo/event')
+async def poly_demo_event(body:PolyDemoEvent):
+    session=poly_demo_sessions.get(body.sessionId)
+    if not session: raise HTTPException(404,'Demo session not found')
+    now=time.time()
+    event={'t':now,'type':body.eventType,'payload':body.payload}
+    session['events'].append(event)
+    session['events']=session['events'][-5000:]
+    session['lastSeenAt']=now
+    if body.eventType=='SNAPSHOT':
+        session['latestSnapshot']=body.payload
+    if body.eventType in {'COMPLETE','STOP'}:
+        session['status']='complete'
+        session['completedAt']=now
+    _save_demo_sessions()
+    return {'status':'ok','events':len(session['events'])}
+
+@app.get('/api/poly/demo/latest')
+async def poly_demo_latest_report():
+    if not poly_demo_latest or poly_demo_latest not in poly_demo_sessions:
+        raise HTTPException(404,'No demo session yet')
+    return poly_demo_sessions[poly_demo_latest]
+
+@app.get('/api/poly/demo/{session_id}')
+async def poly_demo_report(session_id:str):
+    session=poly_demo_sessions.get(session_id)
+    if not session: raise HTTPException(404,'Demo session not found')
+    return session
 
 class Order(BaseModel):
     inputMint:str
