@@ -109,6 +109,83 @@ class Order(BaseModel):
     amount:str
     taker:str|None=None
 
+class HypotheticalScan(BaseModel):
+    investmentUsd:float=Field(default=2.0,ge=0.5,le=25.0)
+
+SCAN_TAKER='BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV'
+SCAN_FEE_LAMPORTS=180_000
+SCAN_MOVE_BUFFER_BPS=35
+
+@app.post('/api/hypothetical')
+async def hypothetical(payload:HypotheticalScan,request:Request):
+    """Read-only $-sized SOL->USDC->SOL market scan. Never signs or submits a transaction."""
+    headers=jup_key(request)
+    usd_raw=max(500_000,min(25_000_000,round(payload.investmentUsd*1_000_000)))
+
+    # First quote estimates how much SOL currently corresponds to the requested USD notional.
+    seed=await jupiter_order(headers,{
+        'inputMint':USDC,'outputMint':SOL,'amount':str(usd_raw),'taker':SCAN_TAKER
+    })
+    sol_start=int(seed.get('outAmount') or 0)
+    if sol_start<=0:
+        raise HTTPException(502,'Jupiter did not return a usable SOL reference quote')
+
+    leg1=await jupiter_order(headers,{
+        'inputMint':SOL,'outputMint':USDC,'amount':str(sol_start),'taker':SCAN_TAKER
+    })
+    usdc_mid=int(leg1.get('outAmount') or 0)
+    if usdc_mid<=0:
+        raise HTTPException(502,'Jupiter did not return a usable SOL to USDC quote')
+
+    leg2=await jupiter_order(headers,{
+        'inputMint':USDC,'outputMint':SOL,'amount':str(usdc_mid),'taker':SCAN_TAKER
+    })
+    sol_return=int(leg2.get('outAmount') or 0)
+    if sol_return<=0:
+        raise HTTPException(502,'Jupiter did not return a usable USDC to SOL quote')
+
+    investment=float(usd_raw)/1_000_000
+    sol_start_ui=sol_start/1_000_000_000
+    sol_return_ui=sol_return/1_000_000_000
+    sol_price=(investment/sol_start_ui) if sol_start_ui>0 else 0.0
+    raw_profit_sol=sol_return_ui-sol_start_ui
+    raw_profit_usd=raw_profit_sol*sol_price
+    raw_edge_bps=(raw_profit_usd/investment*10_000) if investment else 0.0
+    fee_allowance_usd=(SCAN_FEE_LAMPORTS/1_000_000_000)*sol_price
+    move_buffer_usd=investment*(SCAN_MOVE_BUFFER_BPS/10_000)
+    conservative_profit_usd=raw_profit_usd-fee_allowance_usd-move_buffer_usd
+    conservative_edge_bps=(conservative_profit_usd/investment*10_000) if investment else 0.0
+
+    # Heuristic confidence: quote margin relative to conservative cost assumptions.
+    # It is deliberately bounded and is NOT a calibrated probability of profit.
+    confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45))
+    verdict='EXECUTE-CANDIDATE' if conservative_profit_usd>0.005 else ('WATCH' if raw_profit_usd>0 else 'REJECT')
+
+    return {
+        'status':'ok',
+        'timestamp':time.time(),
+        'investmentUsd':round(investment,6),
+        'solPriceUsd':round(sol_price,6),
+        'startSol':sol_start,
+        'startSolUi':round(sol_start_ui,9),
+        'midUsdc':usdc_mid,
+        'midUsdcUi':round(usdc_mid/1_000_000,6),
+        'returnSol':sol_return,
+        'returnSolUi':round(sol_return_ui,9),
+        'rawProfitUsd':round(raw_profit_usd,8),
+        'rawEdgeBps':round(raw_edge_bps,3),
+        'feeAllowanceUsd':round(fee_allowance_usd,8),
+        'moveBufferUsd':round(move_buffer_usd,8),
+        'conservativeProfitUsd':round(conservative_profit_usd,8),
+        'conservativeEdgeBps':round(conservative_edge_bps,3),
+        'projectedReturnUsd':round(investment+conservative_profit_usd,8),
+        'confidence':round(confidence,1),
+        'confidenceType':'heuristic-not-statistical',
+        'verdict':verdict,
+        'route':'SOL → USDC → SOL',
+        'router':'Jupiter Swap V2'
+    }
+
 @app.post('/api/order')
 async def order(input:Order, request:Request):
     if {input.inputMint,input.outputMint}!={SOL,USDC} or input.inputMint==input.outputMint:
