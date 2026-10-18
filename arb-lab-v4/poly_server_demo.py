@@ -174,6 +174,7 @@ class PolyServerDemo:
                 async with websockets.connect(CLOB_WS,ping_interval=None,close_timeout=2,max_size=2_000_000) as ws:
                     await ws.send(json.dumps({'type':'market','assets_ids':[up,down],'initial_dump':True,'custom_feature_enabled':True}))
                     self.feed['clob']='live'
+                    print('POLY_DEMO_CLOB_CONNECTED',self.market.get('slug'),flush=True)
                     async def pinger():
                         while True:
                             await asyncio.sleep(10)
@@ -225,11 +226,13 @@ class PolyServerDemo:
         while True:
             try:
                 async with websockets.connect(RTDS_WS,ping_interval=None,close_timeout=2,max_size=2_000_000) as ws:
+                    flt=json.dumps({'symbol':'btc/usd'},separators=(',',':'))
                     await ws.send(json.dumps({'action':'subscribe','subscriptions':[
-                        {'topic':'crypto_prices','type':'update','filters':'btcusdt'},
-                        {'topic':'crypto_prices_twap_sixty','type':'update','filters':json.dumps({'symbol':'btc/usd'})}
+                        {'topic':'crypto_prices_chainlink','type':'update','filters':flt},
+                        {'topic':'crypto_prices_twap_sixty','type':'update','filters':flt}
                     ]}))
                     self.feed['rtds']='live'
+                    print('POLY_DEMO_RTDS_CONNECTED',flush=True)
                     async def pinger():
                         while True:
                             await asyncio.sleep(5);await ws.send('PING')
@@ -244,6 +247,7 @@ class PolyServerDemo:
                     finally:pt.cancel()
             except Exception as e:
                 self.feed['rtds']='error:'+type(e).__name__
+                print('POLY_DEMO_RTDS_ERROR',type(e).__name__,str(e)[:180],flush=True)
                 await asyncio.sleep(1)
 
     def _handle_rtds(self,m):
@@ -256,7 +260,7 @@ class PolyServerDemo:
         except Exception:ts=time.time()*1000
         tms=ts*1000 if ts<1e12 else ts
         if value<=0:return
-        if topic=='crypto_prices':
+        if topic in {'crypto_prices','crypto_prices_chainlink'}:
             self.spot=value;self.spot_ts=tms/1000
             sec=int(tms/1000);self.spot_sec[sec]=value
             cutoff=int(time.time())-300
