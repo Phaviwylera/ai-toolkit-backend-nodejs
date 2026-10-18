@@ -214,6 +214,7 @@ class PolyServerDemo:
                     if old and self.paper and self.paper.get('position') and self.paper['position'].get('marketSlug')==old.get('slug'):
                         await self._settle_position(old.get('slug'))
                     self.open_ref=None;self.open_ref_ts=0;self.open_trusted=False
+                    self.alignment_side=None;self.alignment_since=0.0
                     self.market_version+=1
                     print('POLY_DEMO_MARKET',m['slug'],flush=True)
                 self.market=m;self._apply_rest_book(m);self.feed['market']='live'
