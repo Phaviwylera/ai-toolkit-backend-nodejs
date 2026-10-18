@@ -13,3 +13,12 @@
 .demoTape{max-height:270px;overflow:auto}
 .demoRow .buy{color:var(--cyan)}.demoRow .sell{color:var(--pink)}.demoRow .win{color:var(--green)}.demoRow .loss{color:var(--red)}
 @media(max-width:900px){.demoTop{grid-template-columns:1fr 1fr}.demoStats{grid-template-columns:1fr 1fr 1fr}.demoTapeHead,.demoRow{grid-template-columns:.9fr .7fr .6fr .7fr .7fr 1.4fr;font-size:8px}}
+
+.demoWhy{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-top:0}
+.demoWhy>div{background:#0a080d;padding:10px}
+.demoWhy span,.reasonGrid span{display:block;color:var(--dim);font-size:9px;letter-spacing:.08em}
+.demoWhy b{display:block;margin-top:4px}
+.reasonGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-top:0}
+.reasonGrid>div{background:#09070c;padding:8px}
+.reasonGrid b{display:block;margin-top:4px}
+@media(max-width:900px){.demoWhy{grid-template-columns:1fr}.reasonGrid{grid-template-columns:1fr 1fr}}
