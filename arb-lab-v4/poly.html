@@ -107,7 +107,13 @@
         <div><span>MISSED / NO FILL</span><b id="demoNoFill">0</b></div>
       </div>
       <div class="position" id="demoPosition">NO OPEN PAPER POSITION</div>
-      <p class="note">This uses the real live CLOB bid/ask, live fee curve, live minimum size and simulated order latency. The only missing step is sending an authenticated order to Polymarket.</p>
+      <div class="demoWhy">
+        <div><span>WHY NO TRADE?</span><b id="demoWhy">SERVER ENGINE WARMING UP</b></div>
+        <div><span>BEST LIVE CANDIDATE</span><b id="demoBest">—</b></div>
+        <div><span>SERVER FEEDS</span><b id="demoFeed">MARKET / CLOB / RTDS</b></div>
+      </div>
+      <div id="demoReasons" class="reasonGrid"></div>
+      <p class="note">This demo now runs on the server even if this tab is closed. It uses the real live CLOB bid/ask, current USDC taker fee curve, market minimum size and simulated 350 ms execution latency. The only missing step is signing and sending an authenticated real order.</p>
       <div class="demoTapeHead"><span>TIME</span><span>ACTION</span><span>SIDE</span><span>PRICE</span><span>P/L</span><span>DETAIL</span></div>
       <div id="demoTape" class="demoTape"><div class="empty">Waiting for a trade-quality live signal.</div></div>
     </section>
