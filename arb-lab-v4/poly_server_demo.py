@@ -78,13 +78,52 @@ class PolyServerDemo:
         if self.started: return
         self.started=True
         await self._seed_sigma()
-        self._new_session()
+        if not self._restore_saved():
+            self._new_session()
         self.tasks=[
             asyncio.create_task(self.market_worker(),name='poly-market'),
             asyncio.create_task(self.clob_worker(),name='poly-clob'),
             asyncio.create_task(self.rtds_worker(),name='poly-rtds'),
             asyncio.create_task(self.engine_worker(),name='poly-paper'),
         ]
+
+    def _restore_saved(self):
+        try:
+            if not STATE_FILE.exists(): return False
+            data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
+            p=data.get('paper')
+            now=time.time()
+            if not isinstance(p,dict) or float(p.get('endsAt') or 0)<=now:
+                return False
+            # Strip calculated presentation fields before resuming mutable state.
+            p=dict(p)
+            p.pop('equity',None);p.pop('roiPct',None);p.pop('winRatePct',None)
+            self.paper=p
+            self.reason_counts=defaultdict(int,data.get('reasonCounts') or {})
+            self.visual_history.clear()
+            for row in (data.get('history') or [])[-900:]:
+                if isinstance(row,dict): self.visual_history.append(row)
+            m=data.get('market')
+            if isinstance(m,dict) and float(m.get('startTs') or 0)<=now<float(m.get('endTs') or 0):
+                self.market=m
+                b=data.get('bbo')
+                if isinstance(b,dict): self.bbo=b
+                self.open_ref=data.get('openRef')
+                self.open_trusted=bool(data.get('openTrusted') and self.open_ref)
+                self.latest_model=data.get('model')
+                self.latest_candidate=data.get('candidate')
+                self.latest_reason=data.get('decision') or 'restored'
+                self.latest_mode=data.get('mode') or 'RESTORED'
+                self.spot=data.get('spot')
+                self.twap=data.get('twap')
+                sa=data.get('spotAgeSec');ta=data.get('twapAgeSec')
+                if self.spot is not None:self.spot_ts=now-max(0,float(sa or 0))
+                if self.twap is not None:self.twap_ts=now-max(0,float(ta or 0))
+            print(f"POLY_DEMO_RESTORED session={self.paper.get('sessionId')} market={self.market.get('slug') if self.market else None} openTrusted={self.open_trusted}",flush=True)
+            return True
+        except Exception as exc:
+            print(f"POLY_DEMO_RESTORE_FAILED {type(exc).__name__}",flush=True)
+            return False
 
     def _new_session(self):
         now=time.time()
