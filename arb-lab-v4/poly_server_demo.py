@@ -82,9 +82,9 @@ class PolyServerDemo:
         now=time.time()
         self.paper={
             'version':3,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
-            'startedAt':now,'endsAt':now+10800,'startingBalance':2.0,'cash':2.0,
+            'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
-            'blocked':0,'nofills':0,'peakEquity':2.0,'maxDrawdown':0.0,
+            'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
             'position':None,'events':[],'status':'running','lastOpportunityAt':0.0,
             'signals':0,'candidatesSeen':0
         }
@@ -381,7 +381,7 @@ class PolyServerDemo:
         shares=math.floor(min(affordable,size0 if size0>0 else affordable)*100)/100
         if shares<min_sh or shares<=0:
             p['blocked']+=1
-            self._record('BLOCK',side=best['side'],price=ask0,detail=f'min {min_sh:.2f} shares; affordable {shares:.2f} with 2 USD account')
+            self._record('BLOCK',side=best['side'],price=ask0,detail=f'min {min_sh:.2f} shares; affordable {shares:.2f} with 20 USD account')
             return
         self.pending=True
         tick=max(.001,float(market.get('minTickSize') or .01));max_price=min(.99,ask0+tick)
@@ -493,7 +493,7 @@ class PolyServerDemo:
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
             'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,
             'reasonCounts':dict(self.reason_counts),
-            'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',2))-1)*100 if p else 0,
+            'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
                      'winRatePct':(p.get('wins',0)/p.get('trades',1)*100 if p.get('trades',0) else 0)}
         }
 
