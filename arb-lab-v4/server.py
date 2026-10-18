@@ -33,6 +33,7 @@ market_history_live=deque(maxlen=720)
 market_live_status='warming-up'
 market_seq=0
 jito_selftest='pending'
+poly_selftest='pending'
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
 POLY_GAMMA='https://gamma-api.polymarket.com'
 POLY_CLOB='https://clob.polymarket.com'
@@ -74,7 +75,7 @@ async def poly_css():return FileResponse(ROOT/'poly.css',media_type='text/css',h
 
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'atomic_bundle_execution':True}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'poly_selftest':poly_selftest,'atomic_bundle_execution':True}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -180,6 +181,29 @@ def _poly_best(book,side):
     price=max(x[0] for x in vals) if side=='bids' else min(x[0] for x in vals)
     size=sum(x[1] for x in vals if x[0]==price)
     return {'price':round(price,6),'size':round(size,4)}
+
+@app.on_event('startup')
+async def verify_polymarket_feeds():
+    global poly_selftest
+    try:
+        now=int(time.time());bucket=(now//300)*300;market=None
+        for ts in [bucket,bucket+300,bucket-300]:
+            data=await external_call('GET',POLY_GAMMA+'/markets',params={'slug':f'btc-updown-5m-{ts}'})
+            if isinstance(data,list) and data:
+                market=data[0]
+                if ts==bucket: break
+        if not market: raise RuntimeError('current market not found')
+        outcomes=_poly_jsonish(market.get('outcomes'));tokens=_poly_jsonish(market.get('clobTokenIds'))
+        if len(tokens)<2 or len(tokens)!=len(outcomes): raise RuntimeError('token mapping unavailable')
+        book=await external_call('GET',POLY_CLOB+'/book',params={'token_id':str(tokens[0])})
+        if not isinstance(book,dict): raise RuntimeError('book unavailable')
+        hist=await external_call('GET',BINANCE_REST+'/api/v3/klines',params={'symbol':'BTCUSDT','interval':'1m','limit':'5'})
+        if not isinstance(hist,list) or not hist: raise RuntimeError('BTC history unavailable')
+        poly_selftest='ok'
+        print(f"POLY_SELFTEST_OK slug={market.get('slug')} outcomes={outcomes}",flush=True)
+    except Exception as exc:
+        poly_selftest=f'error:{type(exc).__name__}'
+        print(f"POLY_SELFTEST_FAILED {type(exc).__name__} {getattr(exc,'detail','')}",flush=True)
 
 @app.get('/api/poly/current')
 async def poly_current():
