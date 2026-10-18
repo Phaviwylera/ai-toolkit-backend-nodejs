@@ -8,6 +8,7 @@
     spotSec:new Map(),twapHist:[],fallbackSigma1s:0.00008,
     lastSignalKey:'',lastSignalAt:0,tape:[],alerts:false,discovering:false
   };
+  window.POLY_EDGE_STATE=state;
 
   const fmt=(n,d=2)=>Number.isFinite(Number(n))?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
   const pct=(p)=>Number.isFinite(p)?(p*100).toFixed(1)+'%':'—';
@@ -40,6 +41,9 @@
       if($('marketLink'))$('marketLink').href='https://polymarket.com/event/'+encodeURIComponent(j.slug);
       updateBboFromRest(j);
       if(changed){
+        const previous={slug:state.previousMarketSlug||null,finalTwap:state.twap,finalTwapTs:state.twapTs};
+        window.dispatchEvent(new CustomEvent('poly-edge-market-change',{detail:{previous,current:j,finalTwap:state.twap,previousOpenRef:state.openRef}}));
+        state.previousMarketSlug=j.slug;
         state.openRef=null;state.openRefTs=0;state.openTrusted=false;state.lastSignalKey='';
         connectClob();
       }
@@ -288,6 +292,7 @@
     state.lastSignalKey=key;state.lastSignalAt=Date.now();
     state.tape.unshift({t:new Date(),side:best.side,ask:best.ask,fair:best.fair,net:best.net,state:'OPPORTUNITY'});
     state.tape=state.tape.slice(0,30);renderTape();
+    window.dispatchEvent(new CustomEvent('poly-edge-opportunity',{detail:{best,m,confidence,market:state.market,openRef:state.openRef,openTrusted:state.openTrusted}}));
     if(state.alerts&&'Notification'in window&&Notification.permission==='granted'){
       try{new Notification('POLY/EDGE · '+best.side,{body:'Net model edge '+(best.net*100).toFixed(2)+'¢/share · fair '+pct(best.fair)+' · '+Math.round(m.remaining)+'s left',tag:'poly-edge-'+key})}catch{}
     }
