@@ -32,7 +32,7 @@
 
   <section class="accountHero">
     <div class="accountHeroTop">
-      <div><span>$20 PAPER ACCOUNT · FRESH V4 RISK TEST</span><em id="demoStatus">STARTING</em></div>
+      <div><span>$20 PAPER ACCOUNT · FRESH V6 EXECUTION TEST</span><em id="demoStatus">STARTING</em></div>
       <div class="riskBadge"><span>RISK STATE</span><b id="riskState">ARMED</b></div>
     </div>
     <div class="accountMetrics">
@@ -187,6 +187,8 @@
     <section class="demoPanel">
       <div class="panelTop"><span>TRADE AUDIT · PAPER EXECUTION</span><em>FORENSIC VIEW</em></div>
       <div class="auditMini">
+        <div><span>ORDER ATTEMPTS</span><b id="demoAttempts">0</b></div>
+        <div><span>POST-LATENCY REJECTS</span><b id="demoPostRejects">0</b></div>
         <div><span>BLOCKED</span><b id="demoBlocked">0</b></div>
         <div><span>NO FILL</span><b id="demoNoFill">0</b></div>
         <div><span>RISK LIMIT</span><b>$1.50 SESSION</b></div>
@@ -227,7 +229,7 @@
         <div class="rule"><b>01</b><span><strong>LAG SCALP</strong> runs through most of the 5-minute window after a 15-second opening stabilization. It requires a measurable Chainlink spot→TWAP lead aligned with the chosen side.</span></div>
         <div class="rule"><b>02</b><span><strong>RESOLUTION WATCH</strong> remains visible inside the last 75 seconds but auto-trading is disabled until it proves reliable in shadow data.</span></div>
         <div class="rule"><b>03</b><span>Early-window probability is deliberately shrunk toward 50% so small moves cannot instantly become fake 99% certainty.</span></div>
-        <div class="rule"><b>04</b><span>Lag direction must persist 2.5s; edge includes entry + estimated exit fee + spread buffer. One trade per market, $3.25 max exposure, $0.50 trade stop and $1.50 session kill-switch.</span></div>
+        <div class="rule"><b>04</b><span>Lag direction must persist 2.5s. V6 uses an adaptive marketable-limit cap funded only by excess modeled edge, then recomputes direction and round-trip edge after 350 ms before any paper fill.</span></div>
       </article>
     </section>
   </main>
