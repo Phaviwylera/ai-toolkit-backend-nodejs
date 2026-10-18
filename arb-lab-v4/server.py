@@ -13,7 +13,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
@@ -36,6 +36,9 @@ async def guard(request:Request,call_next):
         if len(hits)>240: return JSONResponse({'detail':'Rate limit reached. Try later.'},status_code=429)
         hits.append(now)
     return await call_next(request)
+
+@app.head('/')
+async def head_home():return Response(status_code=200,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 @app.get('/')
 async def home():return FileResponse(ROOT/'index.html', headers={'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff'})
