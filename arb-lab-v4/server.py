@@ -37,7 +37,7 @@ poly_selftest='pending'
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
 POLY_GAMMA='https://gamma-api.polymarket.com'
 POLY_CLOB='https://clob.polymarket.com'
-BINANCE_REST='https://api.binance.com'
+COINBASE_REST='https://api.exchange.coinbase.com'
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -199,8 +199,8 @@ async def verify_polymarket_feeds():
         step='clob'
         book=await external_call('GET',POLY_CLOB+'/book',params={'token_id':str(tokens[0])})
         if not isinstance(book,dict): raise RuntimeError('book unavailable')
-        step='binance'
-        hist=await external_call('GET',BINANCE_REST+'/api/v3/klines',params={'symbol':'BTCUSDT','interval':'1m','limit':'5'})
+        step='coinbase'
+        hist=await external_call('GET',COINBASE_REST+'/products/BTC-USD/candles',headers={'User-Agent':'POLY-EDGE/1.0'},params={'granularity':'60'})
         if not isinstance(hist,list) or not hist: raise RuntimeError('BTC history unavailable')
         poly_selftest='ok'
         print(f"POLY_SELFTEST_OK slug={market.get('slug')} outcomes={outcomes}",flush=True)
@@ -263,13 +263,13 @@ async def poly_current():
 
 @app.get('/api/poly/btc-history')
 async def poly_btc_history():
-    data=await external_call('GET',BINANCE_REST+'/api/v3/klines',params={'symbol':'BTCUSDT','interval':'1m','limit':'120'})
+    data=await external_call('GET',COINBASE_REST+'/products/BTC-USD/candles',headers={'User-Agent':'POLY-EDGE/1.0'},params={'granularity':'60'})
     if not isinstance(data,list):
         raise HTTPException(502,'BTC history unavailable')
     out=[]
-    for row in data[-120:]:
+    for row in sorted(data,key=lambda x:x[0])[-120:]:
         try:
-            out.append({'t':int(row[0]),'o':float(row[1]),'h':float(row[2]),'l':float(row[3]),'c':float(row[4]),'v':float(row[5])})
+            out.append({'t':int(row[0])*1000,'o':float(row[3]),'h':float(row[2]),'l':float(row[1]),'c':float(row[4]),'v':float(row[5])})
         except Exception:
             pass
     closes=[x['c'] for x in out]
