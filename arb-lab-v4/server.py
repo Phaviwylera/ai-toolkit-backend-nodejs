@@ -50,7 +50,7 @@ async def guard(request:Request,call_next):
         ip=(request.client.host if request.client else 'unknown')
         now=time.monotonic(); hits=requests_by_ip[ip]
         while hits and hits[0]<now-60: hits.popleft()
-        if len(hits)>240: return JSONResponse({'detail':'Rate limit reached. Try later.'},status_code=429)
+        if len(hits)>=240: return JSONResponse({'detail':'Rate limit reached. Automatic backoff active.'},status_code=429,headers={'Retry-After':'5'})
         hits.append(now)
     return await call_next(request)
 
