@@ -43,7 +43,7 @@ async def app_js():return FileResponse(ROOT/'app.js',media_type='text/javascript
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css')
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'atomic_arbitrage':False}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
