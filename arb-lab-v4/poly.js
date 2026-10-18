@@ -25,6 +25,7 @@
 
   function render(j){
     syncPublicState(j);
+    window.dispatchEvent(new CustomEvent('poly-edge-server-snapshot',{detail:j}));
     const m=j.market||{},b=j.bbo||{},model=j.model||{},c=j.candidate||{},paper=j.paper||{};
     const now=Number(j.serverTime)||Date.now()/1000,left=Math.max(0,(Number(m.endTs)||now)-now);
     const feedLive=j.feed?.market==='live'&&j.feed?.clob==='live'&&j.feed?.rtds==='live';
@@ -148,14 +149,38 @@
     requestAnimationFrame(drawOrb);
   }
 
+  let pollTimer=null,pollBusy=false,pollDelay=900;
+  function schedulePoll(delay=pollDelay){
+    clearTimeout(pollTimer);
+    pollTimer=setTimeout(poll,document.hidden?Math.max(1800,delay):delay);
+  }
   async function poll(){
+    if(pollBusy){schedulePoll();return}
+    pollBusy=true;
     const started=performance.now();
     try{
-      const r=await fetch('/api/poly/demo/server',{cache:'no-store'}),j=await r.json();
-      if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
+      const r=await fetch('/api/poly/demo/server',{cache:'no-store'});
+      let j=null;try{j=await r.json()}catch{}
+      if(r.status===429){
+        const retry=Number(r.headers.get('Retry-After'))||5;
+        pollDelay=Math.max(2500,retry*1000);
+        set('feedStatus','RATE LIMIT BACKOFF','warn');
+        set('decision','PAUSED POLLING - server rate-limit backoff '+Math.ceil(pollDelay/1000)+'s','warn');
+        window.dispatchEvent(new CustomEvent('poly-edge-server-error',{detail:{status:429,message:j?.detail||'Rate limit reached',retryMs:pollDelay,t:Date.now()}}));
+        return;
+      }
+      if(!r.ok)throw new Error(j?.detail||('HTTP '+r.status));
+      pollDelay=900;
       render(j);
       set('serverPing',Math.round(performance.now()-started)+' ms');
-    }catch(e){set('feedStatus','SERVER ERROR','bad');set('decision','SERVER ERROR - '+e.message,'bad')}
+    }catch(e){
+      pollDelay=Math.min(5000,Math.max(1500,pollDelay*1.5));
+      set('feedStatus','SERVER RETRY','bad');set('decision','SERVER RETRY - '+e.message,'bad');
+      window.dispatchEvent(new CustomEvent('poly-edge-server-error',{detail:{status:0,message:String(e.message||e),retryMs:pollDelay,t:Date.now()}}));
+    }finally{
+      pollBusy=false;
+      schedulePoll();
+    }
   }
 
   async function alerts(){
@@ -165,7 +190,7 @@
 
   function boot(){
     if($('alertsBtn'))$('alertsBtn').onclick=alerts;
-    poll();setInterval(poll,750);requestAnimationFrame(drawChart);requestAnimationFrame(drawOrb);
+    poll();requestAnimationFrame(drawChart);requestAnimationFrame(drawOrb);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
