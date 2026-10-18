@@ -25,9 +25,9 @@
         down:{bid:n(b?.down?.bid),ask:n(b?.down?.ask),bidSize:n(b?.down?.bidSize),askSize:n(b?.down?.askSize)}
       },
       ref:{spot:n(j?.spot),spotAgeSec:n(j?.spotAgeSec),twap:n(j?.twap),twapAgeSec:n(j?.twapAgeSec),openRef:n(j?.openRef),openTrusted:!!j?.openTrusted},
-      model:model?{remaining:n(model.remaining),projected:n(model.projected),sigma:n(model.sigma),margin:n(model.margin),z:n(model.z),fairUp:n(model.fairUp),fairDown:n(model.fairDown),basis:n(model.basis),drift:n(model.drift)}:null,
+      model:model?{remaining:n(model.remaining),elapsed:n(model.elapsed),projected:n(model.projected),sigma:n(model.sigma),margin:n(model.margin),z:n(model.z),rawFairUp:n(model.rawFairUp),fairUp:n(model.fairUp),fairDown:n(model.fairDown),basis:n(model.basis),drift:n(model.drift),leadBps:n(model.leadBps),impulse5Bps:n(model.impulse5Bps),lagScore:n(model.lagScore),reliability:n(model.reliability)}:null,
       candidate:c&&Object.keys(c).length?{side:c.side||null,ask:n(c.ask),fair:n(c.fair),fee:n(c.fee),raw:n(c.raw),net:n(c.net),size:n(c.size)}:null,
-      decision:j?.decision||null,
+      decision:j?.decision||null,mode:j?.mode||null,
       reasonCounts:j?.reasonCounts||{},
       paper:{
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
