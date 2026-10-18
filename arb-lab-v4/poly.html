@@ -34,6 +34,7 @@
   </div>
 
   <main class="workstation">
+    <div class="liveViewport">
     <section class="hudTop">
       <article class="panel pnlPanel">
         <div class="panelTop"><span>WALLET / PAPER P&L</span><em id="demoStatus">STARTING</em></div>
@@ -148,17 +149,99 @@
         </div>
       </article>
     </section>
+    </div>
+
+    <section class="forensicDeck">
+      <div class="forensicHeader">
+        <div>
+          <span>SESSION FORENSICS / HISTORY</span>
+          <small>Everything below is scrollable. The live workstation above remains the primary view.</small>
+        </div>
+        <button id="downloadLogBtnFull" class="downloadLogPrimary">DOWNLOAD DIAGNOSTIC LOG</button>
+      </div>
+
+      <section class="forensicStats">
+        <div><span>ORDER ATTEMPTS</span><b id="demoAttempts">0</b></div>
+        <div><span>POST-LATENCY REJECTS</span><b id="demoPostRejects">0</b></div>
+        <div><span>BLOCKED</span><b id="demoBlocked">0</b></div>
+        <div><span>NO FILL</span><b id="demoNoFill">0</b></div>
+        <div><span>PAIR ATTEMPTS</span><b id="pairAttemptsView">0</b></div>
+        <div><span>MATCHED SETS</span><b id="matchedSetsHistory">0.00</b></div>
+        <div><span>LOCKED PAIR P/L</span><b id="lockedPairPnlHistory">$0.0000</b></div>
+        <div><span>AVG SET COST</span><b id="avgPairCostHistory">—</b></div>
+      </section>
+
+      <section class="forensicGrid primaryHistory">
+        <article class="historyPanel">
+          <div class="historyHead">
+            <div><span>FULL PAPER TRADE / ORDER HISTORY</span><small>BUY · SELL · ORDER · NOFILL · PAIR · MERGE · CORE</small></div>
+            <b id="historyCount">0 EVENTS</b>
+          </div>
+          <div class="historyTableHead">
+            <span>TIME</span><span>ACTION</span><span>SIDE</span><span>PRICE</span><span>P/L</span><span>DETAIL</span>
+          </div>
+          <div id="demoTape" class="demoTape forensicTape"><div class="empty">Waiting for paper events.</div></div>
+        </article>
+
+        <article class="historyPanel">
+          <div class="historyHead">
+            <div><span>OPPORTUNITY HISTORY</span><small>Qualified signals captured by the live browser session</small></div>
+            <b id="opportunityCount">0 SIGNALS</b>
+          </div>
+          <div class="historyTableHead opportunityCols">
+            <span>TIME</span><span>SIDE</span><span>ASK</span><span>FAIR</span><span>EDGE</span><span>MODE</span>
+          </div>
+          <div id="tapeBodyFull" class="fullOpportunityTape"><div class="empty">No qualified opportunity yet.</div></div>
+        </article>
+      </section>
+
+      <section class="forensicGrid">
+        <article class="historyPanel">
+          <div class="historyHead"><div><span>WHY NO TRADE?</span><small>Accumulated server decision-gate counts</small></div><b id="demoWhy">WARMING</b></div>
+          <div id="demoReasons" class="reasonGrid"></div>
+        </article>
+
+        <article class="historyPanel">
+          <div class="historyHead"><div><span>LIVE EXECUTION / FEED STATUS</span><small>Current candidate, feeds and hard gates</small></div><b id="demoFeed">WARMING</b></div>
+          <div class="gateDetailGrid">
+            <div><span>BEST LIVE CANDIDATE</span><b id="demoBest">—</b></div>
+            <div><span>CLOB ORDER BOOK</span><b id="clobGate">CONNECTING</b></div>
+            <div><span>CHAINLINK / TWAP</span><b id="rtdsGate">CONNECTING</b></div>
+            <div><span>MIN ORDER</span><b id="minOrder">—</b></div>
+            <div><span>MODEL STATE</span><b id="modelState">WARMING</b></div>
+            <div><span>REFERENCE CAPTURE</span><b id="captureState">WAIT</b></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="forensicGrid">
+        <article class="historyPanel">
+          <div class="historyHead"><div><span>MODEL / RISK DETAILS</span><small>Current server-authoritative diagnostics</small></div><b id="strategyMode">WAIT</b></div>
+          <div class="gateDetailGrid">
+            <div><span>PROJECTED FINAL</span><b id="projectedTwap">—</b></div>
+            <div><span>MODEL DISTANCE</span><b id="modelDistance">—</b></div>
+            <div><span>5S IMPULSE</span><b id="impulse5Mirror">—</b></div>
+            <div><span>LAG SCORE</span><b id="lagScore">—</b></div>
+            <div><span>CONFIDENCE</span><b id="confidence">—</b></div>
+            <div><span>FEE / SHARE</span><b id="feePerShare">—</b></div>
+            <div><span>RAW EDGE</span><b id="rawEdge">—</b></div>
+            <div><span>REFERENCE AGE</span><b id="latency">—</b></div>
+          </div>
+        </article>
+
+        <article class="historyPanel">
+          <div class="historyHead"><div><span>SESSION POSITION / LINKS</span><small>Current exposure and direct market access</small></div><b>PAPER ONLY</b></div>
+          <div class="positionForensic" id="positionForensic">NO OPEN PAPER POSITION</div>
+          <a id="marketLink" class="marketLinkFull" href="#" target="_blank" rel="noopener">OPEN CURRENT POLYMARKET ↗</a>
+          <div class="forensicNote">
+            Diagnostic downloads contain market/model/paper telemetry only. No private keys or wallet credentials.
+          </div>
+        </article>
+      </section>
+    </section>
 
     <section class="diagVault" aria-hidden="true">
-      <span id="projectedTwap"></span><span id="modelDistance"></span><span id="captureState"></span>
-      <span id="impulse5Mirror"></span><span id="lagScore"></span><span id="confidence"></span>
-      <span id="feePerShare"></span><span id="rawEdge"></span><span id="latency"></span>
-      <span id="modelState"></span><span id="edgeWhy"></span><span id="strategyMode"></span>
-      <span id="clobGate"></span><span id="rtdsGate"></span><span id="minOrder"></span>
-      <a id="marketLink" href="#"></a>
-      <span id="demoBlocked"></span><span id="demoNoFill"></span><span id="demoAttempts"></span><span id="demoPostRejects"></span>
-      <span id="demoWhy"></span><span id="demoBest"></span><span id="demoFeed"></span>
-      <div id="demoReasons"></div><div id="demoTape"></div>
+      <span id="edgeWhy"></span>
     </section>
   </main>
 </div>
