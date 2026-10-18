@@ -60,6 +60,8 @@
     set('demoDrawdown',pct((Number(p.maxDrawdown)||0)*100,2));
     set('demoBlocked',String(p.blocked||0));
     set('demoNoFill',String(p.nofills||0));
+    set('demoAttempts',String(p.executionAttempts||0));
+    set('demoPostRejects',String(p.postLatencyRejects||0));
     const left=Math.max(0,Math.floor((Number(p.endsAt)||0)-Number(j.serverTime||Date.now()/1000)));
     set('demoLeft',String(Math.floor(left/3600)).padStart(2,'0')+':'+String(Math.floor((left%3600)/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0'));
     const status=p.status==='complete'?'COMPLETE':p.status==='risk_locked'?'RISK LOCKED':'SERVER LIVE PAPER';
