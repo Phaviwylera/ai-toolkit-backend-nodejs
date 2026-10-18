@@ -55,6 +55,7 @@
     const total=Number.isFinite(Number(p.totalPnl))?Number(p.totalPnl):(eq-start);
     const unreal=Number.isFinite(Number(p.unrealizedPnl))?Number(p.unrealizedPnl):(total-real);
     set('demoEquity','$'+eq.toFixed(4),eq>=start?'good':'bad');
+    set('mobileDockEquity','$'+eq.toFixed(2),eq>=start?'good':'bad');
     set('demoPnl',money(real,4),real>=0?'good':'bad');
     set('demoTotalPnl',money(total,4),total>=0?'good':'bad');
     set('demoUnrealized',money(unreal,4),unreal>=0?'good':'bad');
