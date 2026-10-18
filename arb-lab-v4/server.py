@@ -27,6 +27,10 @@ jupiter_order_lock=asyncio.Lock()
 last_jupiter_order=0.0
 jupiter_provider_selftest='pending'
 market_scan_selftest='pending'
+market_latest=None
+market_history_live=deque(maxlen=120)
+market_live_status='warming-up'
+market_seq=0
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -47,11 +51,14 @@ async def home():return FileResponse(ROOT/'index.html', headers={'Cache-Control'
 @app.get('/app.js')
 async def app_js():return FileResponse(ROOT/'app.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
 
+@app.get('/market.js')
+async def market_js():return FileResponse(ROOT/'market.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
+
 @app.get('/style.css')
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'atomic_arbitrage':False}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -135,33 +142,30 @@ SCAN_TAKER='BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV'
 SCAN_FEE_LAMPORTS=180_000
 SCAN_MOVE_BUFFER_BPS=35
 
-@app.post('/api/hypothetical')
-async def hypothetical(payload:HypotheticalScan,request:Request):
-    """Read-only $-sized SOL->USDC->SOL market scan. Never signs or submits a transaction."""
-    headers=jup_key(request)
-    usd_raw=max(500_000,min(25_000_000,round(payload.investmentUsd*1_000_000)))
+async def calculate_hypothetical(investment_usd:float=2.0):
+    key=os.environ.get('JUPITER_API_KEY')
+    if not key:
+        raise HTTPException(503,'Jupiter API key is not configured')
+    headers={'x-api-key':key,'Accept':'application/json'}
+    usd_raw=max(500_000,min(25_000_000,round(investment_usd*1_000_000)))
 
-    # First quote estimates how much SOL currently corresponds to the requested USD notional.
     seed=await jupiter_order(headers,{
         'inputMint':USDC,'outputMint':SOL,'amount':str(usd_raw),'taker':SCAN_TAKER
     })
     sol_start=int(seed.get('outAmount') or 0)
-    if sol_start<=0:
-        raise HTTPException(502,'Jupiter did not return a usable SOL reference quote')
+    if sol_start<=0: raise HTTPException(502,'No usable USDC to SOL reference quote')
 
     leg1=await jupiter_order(headers,{
         'inputMint':SOL,'outputMint':USDC,'amount':str(sol_start),'taker':SCAN_TAKER
     })
     usdc_mid=int(leg1.get('outAmount') or 0)
-    if usdc_mid<=0:
-        raise HTTPException(502,'Jupiter did not return a usable SOL to USDC quote')
+    if usdc_mid<=0: raise HTTPException(502,'No usable SOL to USDC quote')
 
     leg2=await jupiter_order(headers,{
         'inputMint':USDC,'outputMint':SOL,'amount':str(usdc_mid),'taker':SCAN_TAKER
     })
     sol_return=int(leg2.get('outAmount') or 0)
-    if sol_return<=0:
-        raise HTTPException(502,'Jupiter did not return a usable USDC to SOL quote')
+    if sol_return<=0: raise HTTPException(502,'No usable USDC to SOL return quote')
 
     investment=float(usd_raw)/1_000_000
     sol_start_ui=sol_start/1_000_000_000
@@ -174,36 +178,58 @@ async def hypothetical(payload:HypotheticalScan,request:Request):
     move_buffer_usd=investment*(SCAN_MOVE_BUFFER_BPS/10_000)
     conservative_profit_usd=raw_profit_usd-fee_allowance_usd-move_buffer_usd
     conservative_edge_bps=(conservative_profit_usd/investment*10_000) if investment else 0.0
-
-    # Heuristic confidence: quote margin relative to conservative cost assumptions.
-    # It is deliberately bounded and is NOT a calibrated probability of profit.
     confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45))
     verdict='EXECUTE-CANDIDATE' if conservative_profit_usd>0.005 else ('WATCH' if raw_profit_usd>0 else 'REJECT')
 
     return {
-        'status':'ok',
-        'timestamp':time.time(),
-        'investmentUsd':round(investment,6),
-        'solPriceUsd':round(sol_price,6),
-        'startSol':sol_start,
-        'startSolUi':round(sol_start_ui,9),
-        'midUsdc':usdc_mid,
-        'midUsdcUi':round(usdc_mid/1_000_000,6),
-        'returnSol':sol_return,
-        'returnSolUi':round(sol_return_ui,9),
-        'rawProfitUsd':round(raw_profit_usd,8),
-        'rawEdgeBps':round(raw_edge_bps,3),
-        'feeAllowanceUsd':round(fee_allowance_usd,8),
-        'moveBufferUsd':round(move_buffer_usd,8),
+        'status':'ok','timestamp':time.time(),'investmentUsd':round(investment,6),
+        'solPriceUsd':round(sol_price,6),'startSol':sol_start,'startSolUi':round(sol_start_ui,9),
+        'midUsdc':usdc_mid,'midUsdcUi':round(usdc_mid/1_000_000,6),
+        'returnSol':sol_return,'returnSolUi':round(sol_return_ui,9),
+        'rawProfitUsd':round(raw_profit_usd,8),'rawEdgeBps':round(raw_edge_bps,3),
+        'feeAllowanceUsd':round(fee_allowance_usd,8),'moveBufferUsd':round(move_buffer_usd,8),
         'conservativeProfitUsd':round(conservative_profit_usd,8),
         'conservativeEdgeBps':round(conservative_edge_bps,3),
         'projectedReturnUsd':round(investment+conservative_profit_usd,8),
-        'confidence':round(confidence,1),
-        'confidenceType':'heuristic-not-statistical',
-        'verdict':verdict,
-        'route':'SOL → USDC → SOL',
-        'router':'Jupiter Swap V2'
+        'confidence':round(confidence,1),'confidenceType':'heuristic-not-statistical',
+        'verdict':verdict,'route':'SOL → USDC → SOL','router':'Jupiter Swap V2'
     }
+
+async def continuous_market_worker():
+    global market_latest,market_live_status,market_seq
+    while True:
+        try:
+            market_live_status='scanning'
+            item=await calculate_hypothetical(2.0)
+            market_seq+=1
+            item['seq']=market_seq
+            item['serverMode']='continuous'
+            market_latest=item
+            market_history_live.appendleft(item)
+            market_live_status='live'
+            print(f"LIVE_SCAN seq={market_seq} verdict={item['verdict']} pnl={item['conservativeProfitUsd']}",flush=True)
+        except Exception as exc:
+            market_live_status='error'
+            print(f"LIVE_SCAN_ERROR {type(exc).__name__}",flush=True)
+        await asyncio.sleep(0.8)
+
+@app.on_event('startup')
+async def start_market_worker():
+    asyncio.create_task(continuous_market_worker())
+
+@app.get('/api/live-market')
+async def live_market():
+    return {
+        'status':market_live_status,
+        'latest':market_latest,
+        'history':list(market_history_live)[:24],
+        'scanInterval':'continuous-provider-limited',
+        'providerLimit':'Jupiter requests serialized to ~1 request/second'
+    }
+
+@app.post('/api/hypothetical')
+async def hypothetical(payload:HypotheticalScan,request:Request):
+    return await calculate_hypothetical(payload.investmentUsd)
 
 @app.post('/api/order')
 async def order(input:Order, request:Request):
