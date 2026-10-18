@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import httpx
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from wallet_strategy_research import WalletResearch, TARGET_WALLET
@@ -40,8 +41,21 @@ async def launch(wallet=TARGET_WALLET,copy=True):
             hb.cancel()
     STATE["task"]=asyncio.create_task(go())
 
+async def keepalive():
+    # Render free web services sleep when they receive no HTTP traffic even if an
+    # in-process research task is active. A lightweight self-health request keeps
+    # this dedicated analysis job alive until its finite full-history run ends.
+    async with httpx.AsyncClient(timeout=15) as c:
+        while True:
+            await asyncio.sleep(45)
+            try:
+                await c.get("https://poly-wallet-research.onrender.com/health")
+            except Exception:
+                pass
+
 @app.on_event("startup")
 async def startup():
+    asyncio.create_task(keepalive())
     await launch(TARGET_WALLET,True)
 
 @app.get("/health")
