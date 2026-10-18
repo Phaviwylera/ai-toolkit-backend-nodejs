@@ -73,9 +73,9 @@
         <div class="canvas-wrap"><canvas id="flowCanvas"></canvas><div class="core-label"><span>ARB CORE</span><b id="coreScore">—</b><small>EDGE SCORE</small></div></div>
         <div class="signal-strip">
           <div><span>QUOTE FRESHNESS</span><b id="freshness">—</b></div>
-          <div><span>VENUE SPREAD</span><b id="venueSpread">— bps</b></div>
+          <div><span>ROUTE VENUES</span><b id="routeVenues">—</b></div>
           <div><span>AUTO EXEC</span><b id="autoExecState">LOCKED</b></div>
-          <div><span>DISLOCATION</span><b id="dislocationScore">— / 100</b></div><div><span>1H MOMENTUM</span><b id="momentum1h">—%</b></div><div><span>SCAN ENGINE</span><b class="green">ACTIVE</b></div>
+          <div><span>DISLOCATION</span><b id="dislocationScore">— / 100</b></div><div><span>SHORT MOMENTUM</span><b id="momentumShort">— bps</b></div><div><span>SCAN ENGINE</span><b class="green">ACTIVE</b></div>
         </div>
       </article>
 
@@ -96,15 +96,15 @@
           <div class="status-cells">
             <div><span>SCAN</span><b class="green">ALWAYS ON</b></div>
             <div><span>LIVE TRADE LIMIT</span><b>≤ $1 PER CYCLE</b></div>
-            <div><span>ROUND TRIP</span><b>NON-ATOMIC</b></div>
-            <div><span>FAIL MODE</span><b>STOP / RECONCILE</b></div>
+            <div><span>ROUND TRIP</span><b>JITO BUNDLE</b></div>
+            <div><span>FAIL MODE</span><b>NO LOOSE FALLBACK</b></div>
           </div>
         </div>
         <div class="console-actions">
           <button id="scanBtn">↻ REQUOTE NOW</button><button id="notifyBtn">🔔 ENABLE OPPORTUNITY ALERTS</button>
           <button id="startBtn" class="arm">▶ ARM AUTO TRADING</button>
           <button id="stopBtn" class="stop" disabled>■ STOP BOT</button>
-          <div class="console-note">The $2 panel is a read-only market simulation. The current live engine keeps a smaller per-cycle cap for safety.</div>
+          <div class="console-note">The $2 panel is a continuous executable-route model. Funded execution uses a stricter ≤$1 cycle, 1-bp slippage cap and a Jito all-or-nothing bundle.</div>
         </div>
       </div>
     </section>
@@ -154,7 +154,7 @@
     </section>
   </main>
 
-  <footer><span>ARB/LAB V5 · LIVE SOLANA TERMINAL</span><span id="sidebarStatus">DISARMED</span><span>NON-ATOMIC SWAPS · EXPERIMENTAL · NO GUARANTEED RETURNS</span></footer>
+  <footer><span>ARB/LAB V6 · LIVE SOLANA SEARCHER</span><span id="sidebarStatus">DISARMED</span><span>JITO BUNDLE EXECUTION · EXPERIMENTAL · NO GUARANTEED RETURNS</span></footer>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
