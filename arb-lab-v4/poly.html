@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050607">
-<title>POLY/EDGE V9 — Live Market Workstation</title>
+<title>POLY/EDGE V12 — Inventory Pairing Workstation</title>
 <link rel="stylesheet" href="/poly.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="mark">PE</span>
-      <div><b>POLY/EDGE</b><small>BTC 5M · HYBRID INVENTORY + LAG ENGINE</small></div>
+      <div><b>POLY/EDGE</b><small>BTC 5M · V12 BOUNDED INVENTORY PAIRING + LAG ENGINE</small></div>
     </div>
     <div class="statusCluster">
       <span class="statusPill"><i class="live-dot"></i><b id="feedStatus">CONNECTING</b></span>
@@ -28,7 +28,7 @@
   <div class="ticker">
     <div class="tickerTrack">
       <span>CHAINLINK BTC/USD</span><i>•</i><span>60S TWAP</span><i>•</i><span>POLYMARKET CLOB</span><i>•</i>
-      <span>VEGA → TITAN FAST CORE</span><i>•</i><span>COMPLETE SETS</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
+      <span>VEGA → TITAN FAST CORE</span><i>•</i><span>V12 CHEAP-LEG INVENTORY PAIRING</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
       <span>$20 PAPER CAPITAL</span><i>•</i><span>REAL ORDERS LOCKED</span>
     </div>
   </div>
@@ -102,7 +102,7 @@
         <div id="resolutionGrid" class="resolutionGrid"></div>
         <div class="pairTiny">
           <span>RAW <b id="pairRaw">—</b></span>
-          <span>MAKER <b id="makerPair">—</b></span>
+          <span>INV QUOTE <b id="makerPair">—</b></span>
           <span>MATCHED <b id="matchedSets">0</b></span>
           <span>LOCKED <b id="lockedPairPnl">$0</b></span>
         </div>
@@ -175,7 +175,7 @@
         <div><span>POST-LATENCY REJECTS</span><b id="demoPostRejects">0</b></div>
         <div><span>BLOCKED</span><b id="demoBlocked">0</b></div>
         <div><span>NO FILL</span><b id="demoNoFill">0</b></div>
-        <div><span>PAIR ATTEMPTS</span><b id="pairAttemptsView">0</b></div>
+        <div><span>PAIR / INV QUOTES</span><b id="pairAttemptsView">0</b></div>
         <div><span>MATCHED SETS</span><b id="matchedSetsHistory">0.00</b></div>
         <div><span>LOCKED PAIR P/L</span><b id="lockedPairPnlHistory">$0.0000</b></div>
         <div><span>AVG SET COST</span><b id="avgPairCostHistory">—</b></div>
@@ -184,7 +184,7 @@
       <section class="forensicGrid primaryHistory">
         <article class="historyPanel">
           <div class="historyHead">
-            <div><span>FULL PAPER TRADE / ORDER HISTORY</span><small>BUY · SELL · ORDER · NOFILL · PAIR · MERGE · CORE</small></div>
+            <div><span>FULL PAPER TRADE / ORDER HISTORY</span><small>BUY · SELL · INV_QUOTE · INV_FILL · INV_MERGE · NOFILL · CORE</small></div>
             <b id="historyCount">0 EVENTS</b>
           </div>
           <div class="historyTableHead">
