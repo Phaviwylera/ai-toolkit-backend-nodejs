@@ -1,10 +1,11 @@
 'use strict';
-/* ARB/LAB browser-only signing vault. All trade execution is EXPERIMENTAL and NON-ATOMIC.
+/* ARB/LAB browser-only signing vault.
+   Opportunity execution uses a Jito all-or-nothing bundle when available.
    The server never receives seed phrases, secret keys or vault passphrases. */
 const SOL='So11111111111111111111111111111111111111112';
 const USDC='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const VAULT_STORAGE='arblab_one_encrypted_vault_v1',EVENT_STORAGE='arblab_one_events_v1',LIMIT_STORAGE='arblab_one_limit_v1',MARKET_STORAGE='arblab_market_history_v1';
-const RESERVE=3_000_000, EST_FEE=180_000, MIN_PROFIT=30_000, BPS_BUFFER=100, MAX_ATTEMPTS=3;
+const RESERVE=3_000_000, EST_FEE=180_000, MIN_PROFIT=30_000, BPS_BUFFER=100, MAX_ATTEMPTS=3, JITO_TIP_LAMPORTS=1000, STRICT_SLIPPAGE_BPS=1;
 const $=id=>document.getElementById(id);
 let wallet=null, walletPub='', phantomAddress='', vault=null, active=false, inflight=false, loop=null, stats={sol:0,usdc:0}, attemptToday=0, lastCandidate=null, runningScan=false;
 let marketLoop=null,countdownLoop=null,nextMarketScanAt=0,runningMarketScan=false,marketHistory=[];
@@ -18,7 +19,7 @@ function fmt(n,places=6){return Number(n).toLocaleString('en-US',{maximumFractio
 function loadAttempts(){let d;try{d=JSON.parse(localStorage.getItem(LIMIT_STORAGE)||'null')}catch{}const day=new Date().toISOString().slice(0,10);if(!d||d.day!==day)d={day,count:0};attemptToday=d.count;$('cycleCount').innerHTML=`${attemptToday} <span>/ ${MAX_ATTEMPTS}</span>`;return d}
 function markAttempt(){const d=loadAttempts();d.count++;localStorage.setItem(LIMIT_STORAGE,JSON.stringify(d));loadAttempts()}
 function renderVault(){$('createVault').hidden=!!vault;$('unlockVault').hidden=!vault;const pub=vault?.address||'';$('botAddress').textContent=pub||'Create your bot wallet above';$('vaultTag').textContent=wallet?'UNLOCKED':vault?'ENCRYPTED · LOCKED':'VAULT MISSING';$('vaultTag').classList.toggle('amber',!wallet);$('copyBtn').disabled=!pub;$('lockBtn').disabled=!wallet; if(walletPub) $('networkState').textContent='WALLET '+walletPub.slice(0,4)+'…'+walletPub.slice(-4);renderMode()}
-function renderMode(){const title=active?'● LIVE AUTO ARMED':inflight?'● TRADE SETTLING':'● DISARMED';$('modeBadge').textContent=title;$('modeBadge').classList.toggle('armed',active);$('sidebarStatus').textContent=active?'LIVE AUTO ARMED':inflight?'SETTLING':'DISARMED';const pd=$('presenceDot');if(pd)pd.style.background=active?'#77ff9b':'#ffc44d';$('startBtn').disabled=active||inflight||!wallet;$('stopBtn').disabled=!active||inflight;$('withdrawBtn').disabled=active||inflight;$('recoverUsdc').disabled=active||inflight||!wallet;$('scanBtn').disabled=runningMarketScan;const ae=$('autoExecState');if(ae){ae.textContent=active?'ARMED':inflight?'SETTLING':'LOCKED';ae.className=active?'green':inflight?'amberText':''}}
+function renderMode(){const title=active?'● LIVE BUNDLE ARMED':inflight?'● BUNDLE SETTLING':'● DISARMED';$('modeBadge').textContent=title;$('modeBadge').classList.toggle('armed',active);$('sidebarStatus').textContent=active?'JITO BUNDLE ARMED':inflight?'BUNDLE SETTLING':'DISARMED';const pd=$('presenceDot');if(pd)pd.style.background=active?'#77ff9b':'#ffc44d';$('startBtn').disabled=active||inflight||!wallet;$('stopBtn').disabled=!active||inflight;$('withdrawBtn').disabled=active||inflight;$('recoverUsdc').disabled=active||inflight||!wallet;$('scanBtn').disabled=runningMarketScan;const ae=$('autoExecState');if(ae){ae.textContent=active?'ARMED':inflight?'SETTLING':'LOCKED';ae.className=active?'green':inflight?'amberText':''}}
 const enc=new TextEncoder();
 function b64(array){let binary='';const v=new Uint8Array(array);for(let i=0;i<v.length;i+=16384)binary+=String.fromCharCode(...v.slice(i,i+16384));return btoa(binary)}
 function unb64(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0))}
@@ -34,8 +35,8 @@ async function importVault(e){try{if(active||inflight)throw Error('Stop trading 
 function apiKey(){return $('jupKey')?.value.trim()||''}
 async function http(path,data,withKey=false){const headers={'Content-Type':'application/json'};if(withKey){const key=apiKey();if(key)headers['X-Jupiter-Api-Key']=key;}let res;try{res=await fetch(path,{method:'POST',headers,body:JSON.stringify(data),cache:'no-store'})}catch{throw Error('Network unavailable. No transaction confirmed. Stop and verify balances.')}let out;try{out=await res.json()}catch{throw Error('Provider returned an invalid response. Verify balances before trying again.')}if(!res.ok)throw Error(typeof out.detail==='string'?out.detail:'API error ('+res.status+')');return out}
 const rpc=(method,params)=>http('/api/rpc',{method,params});
-const order=(from,to,amount,taker=null)=>http('/api/order',{inputMint:from,outputMint:to,amount:String(amount),...(taker?{taker}:{})},true);
-async function balances(){if(!vault)return {sol:0,usdc:0};const pub=vault.address;const [sol,usdc]=await Promise.all([rpc('getBalance',[pub,{commitment:'confirmed'}]),rpc('getTokenAccountsByOwner',[pub,{mint:USDC},{encoding:'jsonParsed',commitment:'confirmed'}])]);const v={sol:Number(sol.value)||0,usdc:(usdc.value||[]).reduce((n,a)=>n+Number(a.account?.data?.parsed?.info?.tokenAmount?.amount||0),0)};if(!Number.isSafeInteger(v.sol)||!Number.isSafeInteger(v.usdc))throw Error('Unexpected chain balance');return v}
+const order=(from,to,amount,taker=null,slippageBps=null)=>http('/api/order',{inputMint:from,outputMint:to,amount:String(amount),...(taker?{taker}:{}),...(slippageBps!==null?{slippageBps}:{})},true);
+async function balances(){if(!vault)return {sol:0,usdc:0,usdcAccountExists:false};const pub=vault.address;const [sol,usdc]=await Promise.all([rpc('getBalance',[pub,{commitment:'confirmed'}]),rpc('getTokenAccountsByOwner',[pub,{mint:USDC},{encoding:'jsonParsed',commitment:'confirmed'}])]);const accounts=usdc.value||[];const v={sol:Number(sol.value)||0,usdc:accounts.reduce((n,a)=>n+Number(a.account?.data?.parsed?.info?.tokenAmount?.amount||0),0),usdcAccountExists:accounts.length>0};if(!Number.isSafeInteger(v.sol)||!Number.isSafeInteger(v.usdc))throw Error('Unexpected chain balance');return v}
 async function refresh(){try{if(!vault){$('solBal').textContent='0.000000';$('usdcBal').textContent='0.0000';return}stats=await balances();$('solBal').textContent=fmt(stats.sol/1e9,6);$('usdcBal').textContent=fmt(stats.usdc/1e6,4);$('networkState').textContent='RPC: CONNECTED'}catch(e){$('networkState').textContent='RPC: UNAVAILABLE';toast('Cannot verify wallet balances: '+e.message,true)}}
 async function getCandidate(){if(!vault)throw Error('Create your bot wallet first.');const values=await balances();stats=values;$('solBal').textContent=fmt(stats.sol/1e9,6);$('usdcBal').textContent=fmt(stats.usdc/1e6,4);const available=values.sol-RESERVE;if(available<160000)throw Error('Insufficient SOL after 0.003 SOL network/account reserve. With $2, you may need more for viable transactions.');let spend=Math.min(Math.floor(available*.4),15000000);if(spend<1000)throw Error('Spend amount below routing minimum');let leg1=await order(SOL,USDC,spend,vault.address);if(Number(leg1.outAmount)>1_000_000){spend=Math.max(1000,Math.floor(spend*990000/Number(leg1.outAmount)));leg1=await order(SOL,USDC,spend,vault.address)}const rawUsdc=Number(leg1.outAmount);if(!Number.isSafeInteger(rawUsdc)||rawUsdc<1000||rawUsdc>1000000)throw Error('No eligible SOL→USDC route within the $1 quoted-spend cap');let leg2=await order(USDC,SOL,rawUsdc,vault.address);const returned=Number(leg2.outAmount);if(!Number.isSafeInteger(returned)||returned<=0)throw Error('No valid USDC→SOL return quote');const buffer=Math.ceil(returned*BPS_BUFFER/10000);const net=returned-spend-EST_FEE-buffer;return {spend,rawUsdc,returned,buffer,net,eligible:net>MIN_PROFIT,at:new Date().toISOString()}}
 function showCandidate(c){$('qSpend').textContent=fmt(c.spend/1e9,9)+' SOL';$('qReturn').textContent=fmt(c.returned/1e9,9)+' SOL';$('qNet').textContent=(c.net>0?'+':'')+fmt(c.net/1e9,9)+' SOL';$('qNet').style.color=c.eligible?'var(--green)':'var(--red)';$('scanHint').textContent=c.eligible?'EXECUTION REQUOTE PASSED — not a guarantee.':'Execution requote below threshold — no real trade.'}
@@ -146,8 +147,110 @@ function startFlow(){
 }
 
 async function waitFinal(signature){if(!signature||typeof signature!=='string')throw Error('No valid transaction signature reported. Stop and inspect chain.');for(let i=0;i<16;i++){await new Promise(resolve=>setTimeout(resolve,2400));const rs=await rpc('getSignatureStatuses',[[signature],{searchTransactionHistory:true}]);const item=rs?.value?.[0];if(item?.err)throw Error('Transaction failed on-chain: '+JSON.stringify(item.err).slice(0,120));if(item&&(item.confirmationStatus==='confirmed'||item.confirmationStatus==='finalized'))return true}throw Error('Transaction confirmation uncertain. Do not retry blindly.')}
-async function tradeLeg(from,to,amount,label){if(!wallet)throw Error('Signing key locked');if(!Number.isSafeInteger(amount)||amount<=0)throw Error('Invalid trade size');const q=await order(from,to,amount,wallet.publicKey.toBase58());if(Number(q.inAmount)!==amount||!q.transaction||!q.requestId)throw Error(label+': executable order unavailable');const sdk_=sdk();let tx;try{tx=sdk_.VersionedTransaction.deserialize(unb64(q.transaction));const signers=tx.message.staticAccountKeys.slice(0,tx.message.header.numRequiredSignatures);if(!signers.some(k=>k.equals(wallet.publicKey)))throw Error('Transaction did not request bot wallet signature');tx.sign([wallet])}catch(e){throw Error(label+': invalid signing transaction: '+e.message)}const result=await http('/api/execute',{signedTransaction:b64(tx.serialize()),requestId:q.requestId},true);const signature=result.signature||'';if(signature)log('sent',label+' broadcast; awaiting confirmed finality.',signature);if(result.status!=='Success')throw Error(label+' did not confirm successful: '+String(result.error||result.status||'unknown'));await waitFinal(signature);log('success',label+' confirmed on Solana.',signature);return signature}
-async function attempt(c){if(!active||inflight||!wallet)return;loadAttempts();if(attemptToday>=MAX_ATTEMPTS){disarm('Daily attempt limit reached');return}const prev=await balances();if(prev.usdc>1000){disarm('Wallet already contains USDC; reconcile balances before a new cycle');return}if(prev.sol-c.spend<RESERVE){disarm('Fee reserve would be violated');return}markAttempt();inflight=true;renderMode();log('system','Beginning REAL non-atomic round trip. Separate swaps can lose money.');try{await tradeLeg(SOL,USDC,c.spend,'Leg 1 SOL → USDC');let changed=0;for(let i=0;i<10;i++){const bal=await balances();changed=bal.usdc-prev.usdc;if(changed>0)break;await new Promise(r=>setTimeout(r,1600))}if(changed<=0)throw Error('First leg confirmed but USDC not yet visible; stop; manual reconciliation required');if(changed>1_000_000)throw Error('USDC exceeds strict $1 trade cap; stop');await tradeLeg(USDC,SOL,changed,'Leg 2 USDC → SOL');const after=await balances();stats=after;const delta=after.sol-prev.sol;log(delta>0?'success':'error','Realized wallet SOL change '+fmt(delta/1e9,9)+' SOL (includes network fees, ATA rent and other account effects).');if(delta<=0)disarm('Loss or no net improvement after completed cycle');else toast('Round trip completed. Verify both transactions on Solscan; P&L can include account rent.');await refresh()}catch(e){log('error','Trading halted: '+e.message+' Funds may remain as USDC. Verify your bot wallet on Solscan.');disarm('Error / uncertain state');toast('TRADING HALTED: '+e.message,true)}finally{inflight=false;renderMode()}}
+async function signOrderTransaction(q,label){
+  if(!wallet)throw Error('Signing key locked');
+  if(!q?.transaction)throw Error(label+': executable transaction unavailable');
+  const s=sdk();let tx;
+  try{
+    tx=s.VersionedTransaction.deserialize(unb64(q.transaction));
+    const signers=tx.message.staticAccountKeys.slice(0,tx.message.header.numRequiredSignatures);
+    if(!signers.some(k=>k.equals(wallet.publicKey)))throw Error('transaction did not request bot wallet signature');
+    tx.sign([wallet]);
+    return b64(tx.serialize());
+  }catch(e){throw Error(label+': signing failed: '+e.message)}
+}
+
+async function tradeLeg(from,to,amount,label){
+  if(!wallet)throw Error('Signing key locked');
+  if(!Number.isSafeInteger(amount)||amount<=0)throw Error('Invalid trade size');
+  const q=await order(from,to,amount,wallet.publicKey.toBase58(),STRICT_SLIPPAGE_BPS);
+  if(Number(q.inAmount)!==amount||!q.transaction||!q.requestId)throw Error(label+': executable order unavailable');
+  const signed=await signOrderTransaction(q,label);
+  const result=await http('/api/execute',{signedTransaction:signed,requestId:q.requestId},true);
+  const signature=result.signature||'';
+  if(signature)log('sent',label+' broadcast; awaiting confirmed finality.',signature);
+  if(result.status!=='Success')throw Error(label+' did not confirm successful: '+String(result.error||result.status||'unknown'));
+  await waitFinal(signature);log('success',label+' confirmed on Solana.',signature);return signature
+}
+
+async function getJitoTipAccount(){
+  const r=await fetch('/api/jito/tip-accounts',{cache:'no-store'});
+  const j=await r.json();
+  if(!r.ok||!Array.isArray(j.accounts)||!j.accounts.length)throw Error('Jito tip accounts unavailable');
+  const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);
+  return j.accounts[bytes[0]%j.accounts.length]
+}
+
+async function makeJitoTipTx(tipAccount){
+  const s=sdk(),bh=await rpc('getLatestBlockhash',[{commitment:'processed'}]);
+  const tx=new s.Transaction({feePayer:wallet.publicKey,recentBlockhash:bh.value.blockhash});
+  tx.add(s.SystemProgram.transfer({fromPubkey:wallet.publicKey,toPubkey:new s.PublicKey(tipAccount),lamports:JITO_TIP_LAMPORTS}));
+  tx.sign(wallet);return b64(tx.serialize())
+}
+
+async function waitJitoBundle(bundleId){
+  for(let i=0;i<22;i++){
+    await new Promise(r=>setTimeout(r,900));
+    const st=await http('/api/jito/status',{bundleId});
+    const item=st?.value?.[0];
+    if(!item)continue;
+    if(item.err && !('Ok' in item.err))throw Error('Jito bundle failed: '+JSON.stringify(item.err).slice(0,140));
+    const cs=item.confirmation_status||item.confirmationStatus||'';
+    if(cs==='confirmed'||cs==='finalized')return item;
+  }
+  throw Error('Jito bundle status uncertain; do not resubmit blindly')
+}
+
+async function attempt(c){
+  if(!active||inflight||!wallet)return;
+  loadAttempts();if(attemptToday>=MAX_ATTEMPTS){disarm('Daily attempt limit reached');return}
+  const prev=await balances();
+  if(!prev.usdcAccountExists){disarm('USDC token account missing; micro-arbitrage account-rent cost is too material to create automatically');return}
+  if(prev.usdc>1000){disarm('Wallet already contains USDC; reconcile balances before a new bundle');return}
+  if(prev.sol-c.spend<RESERVE){disarm('SOL reserve would be violated');return}
+
+  inflight=true;renderMode();
+  log('system','Building strict Jito atomic bundle: SOL → USDC → SOL + conditional bundle tip.');
+  try{
+    const q1=await order(SOL,USDC,c.spend,wallet.publicKey.toBase58(),STRICT_SLIPPAGE_BPS);
+    if(Number(q1.inAmount)!==c.spend||!q1.transaction)throw Error('Atomic leg 1 order unavailable');
+    const usdcIn=Number(q1.outAmount);
+    if(!Number.isSafeInteger(usdcIn)||usdcIn<1000||usdcIn>1_000_000)throw Error('Atomic leg 1 output outside $1 safety cap');
+
+    const q2=await order(USDC,SOL,usdcIn,wallet.publicKey.toBase58(),STRICT_SLIPPAGE_BPS);
+    if(Number(q2.inAmount)!==usdcIn||!q2.transaction)throw Error('Atomic leg 2 order unavailable');
+    const quotedReturn=Number(q2.outAmount);
+    if(!Number.isSafeInteger(quotedReturn)||quotedReturn<=0)throw Error('Invalid atomic return quote');
+
+    const worstReturn=Math.floor(quotedReturn*(1-STRICT_SLIPPAGE_BPS/10000));
+    const worstNet=worstReturn-c.spend-EST_FEE-JITO_TIP_LAMPORTS;
+    if(worstNet<=MIN_PROFIT)throw Error('Atomic worst-case quote no longer clears minimum profit: '+fmt(worstNet/1e9,9)+' SOL');
+
+    const [tx1,tx2,tipAccount]=await Promise.all([
+      signOrderTransaction(q1,'Atomic leg 1'),
+      signOrderTransaction(q2,'Atomic leg 2'),
+      getJitoTipAccount()
+    ]);
+    const tipTx=await makeJitoTipTx(tipAccount);
+    markAttempt();
+    const sent=await http('/api/jito/bundle',{transactions:[tx1,tx2,tipTx]});
+    if(!sent.bundleId)throw Error('Jito did not return bundle id');
+    log('sent','Jito bundle accepted: '+sent.bundleId.slice(0,18)+'…; waiting for atomic confirmation.');
+    const landed=await waitJitoBundle(sent.bundleId);
+    log('success','Jito atomic bundle confirmed in slot '+String(landed.slot||'unknown')+'.');
+
+    await new Promise(r=>setTimeout(r,1200));
+    const after=await balances();stats=after;const delta=after.sol-prev.sol;
+    log(delta>0?'success':'error','Realized wallet SOL change '+fmt(delta/1e9,9)+' SOL after atomic bundle.');
+    if(delta<=0)disarm('Bundle landed without positive wallet-level SOL delta');
+    else toast('Atomic bundle landed. Realized change: +'+fmt(delta/1e9,9)+' SOL');
+    await refresh();
+  }catch(e){
+    log('error','Atomic execution halted: '+e.message);
+    disarm('Atomic bundle rejected / uncertain');
+    toast('ATOMIC EXECUTION HALTED: '+e.message,true);
+  }finally{inflight=false;renderMode()}
+}
 async function cycle(){if(!active||inflight)return;loadAttempts();if(attemptToday>=MAX_ATTEMPTS){disarm('Daily trade limit reached');return}const c=await scan(false);if(!c){disarm('Unable to verify profitable quote; fail-closed');return}if(!c.eligible)return;const repeated=await scan(false);if(!repeated||!repeated.eligible){log('scan','Price moved or second quote unavailable — trade rejected');return}if(Math.abs(repeated.spend-c.spend)>1000){log('scan','Quote size drifted; skip cycle');return}await attempt(repeated)}
 function disarm(reason='Manually stopped'){active=false;clearInterval(loop);loop=null;log('system','Auto trading disabled: '+reason+'. Pending transaction may still settle.');renderMode()}
 async function arm(){
@@ -158,12 +261,12 @@ async function arm(){
     if(attemptToday>=MAX_ATTEMPTS)throw Error('Daily attempt cap already reached.');
     const bl=await balances();
     if(bl.sol<=RESERVE+180000)throw Error('Insufficient SOL after reserve. Scanner will keep running, but no real trade can execute.');
-    if(bl.usdc>0)throw Error('Wallet contains USDC already. Recover or swap it before automatic cycling.');
-    if(!confirm('REAL MONEY: Once armed, qualifying opportunities can trigger two SEPARATE swaps without further confirmation. You can lose the dedicated bot balance. Continue?'))return;
-    const typed=prompt('To arm live trading, type exactly: I ACCEPT NON-ATOMIC RISK');
-    if(typed!=='I ACCEPT NON-ATOMIC RISK')throw Error('Live trading was not authorized.');
+    if(!bl.usdcAccountExists)throw Error('Your bot wallet has no USDC token account. I will not create one automatically because its rent cost is material for a $2 wallet.');if(bl.usdc>0)throw Error('Wallet contains USDC already. Recover or swap it before automatic cycling.');
+    if(!confirm('REAL MONEY: Once armed, qualifying opportunities can trigger a Jito all-or-nothing swap bundle without per-trade confirmation. Bundle landing is not guaranteed and profits are not guaranteed. Continue?'))return;
+    const typed=prompt('To arm live trading, type exactly: I ACCEPT LIVE BUNDLE RISK');
+    if(typed!=='I ACCEPT LIVE BUNDLE RISK')throw Error('Live trading was not authorized.');
     active=true;
-    log('system','LIVE AUTO armed. Execution is opportunity-triggered; market scanning itself is continuous and independent.');
+    log('system','LIVE AUTO armed. Qualifying opportunities trigger a strict Jito atomic-bundle build; no sequential-swap fallback is allowed.');
     renderMode();
     await cycle();
   }catch(e){toast(e.message,true)}
