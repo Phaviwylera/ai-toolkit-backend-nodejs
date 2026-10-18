@@ -31,6 +31,12 @@ market_latest=None
 market_history_live=deque(maxlen=120)
 market_live_status='warming-up'
 market_seq=0
+venue_latest=None
+venue_history_live=deque(maxlen=240)
+venue_live_status='warming-up'
+market_trigger=asyncio.Event()
+DEXSCREENER='https://api.dexscreener.com'
+JITO='https://singapore.mainnet.block-engine.jito.wtf'
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -58,7 +64,7 @@ async def market_js():return FileResponse(ROOT/'market.js',media_type='text/java
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'venue_live_status':venue_live_status,'atomic_arbitrage':False}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -73,6 +79,19 @@ async def external_call(method:str,url:str,*,headers=None,json_data=None,params=
     except httpx.RequestError as exc:
         raise HTTPException(503, f'Provider unavailable: {type(exc).__name__}')
 
+
+async def external_raw(method:str,url:str,*,headers=None,json_data=None,params=None):
+    try:
+        async with httpx.AsyncClient(timeout=20,follow_redirects=False) as client:
+            response=await client.request(method,url,headers=headers,json=json_data,params=params)
+        try: body=response.json()
+        except ValueError: raise HTTPException(502,'External provider gave a non-JSON response')
+        if response.status_code>=400:
+            msg=(body.get('errorMessage') or body.get('error') or body.get('message') or 'Provider error') if isinstance(body,dict) else 'Provider error'
+            raise HTTPException(502,str(msg)[:300])
+        return body,dict(response.headers)
+    except httpx.RequestError as exc:
+        raise HTTPException(503, f'Provider unavailable: {type(exc).__name__}')
 
 def jup_key(request:Request):
     key=os.environ.get('JUPITER_API_KEY') or request.headers.get('x-jupiter-api-key','')
@@ -134,6 +153,7 @@ class Order(BaseModel):
     outputMint:str
     amount:str
     taker:str|None=None
+    slippageBps:int|None=Field(default=None,ge=0,le=500)
 
 class HypotheticalScan(BaseModel):
     investmentUsd:float=Field(default=2.0,ge=0.5,le=25.0)
@@ -141,6 +161,35 @@ class HypotheticalScan(BaseModel):
 SCAN_TAKER='BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV'
 SCAN_FEE_LAMPORTS=180_000
 SCAN_MOVE_BUFFER_BPS=35
+
+def _route_labels(order_response):
+    labels=[]
+    for step in (order_response.get('routePlan') or []):
+        info=step.get('swapInfo') or step
+        label=info.get('label') or info.get('ammLabel') or info.get('dex') or ''
+        if label and label not in labels: labels.append(label)
+    return labels
+
+def _rolling_edge_stats(current_edge_bps:float):
+    vals=[float(x.get('conservativeEdgeBps') or 0) for x in list(market_history_live)[:60]]
+    if not vals:
+        return {'edgeMeanBps':0.0,'edgeStdBps':0.0,'edgeZ':0.0,'positiveRatePct':0.0,'persistence':0}
+    mean=sum(vals)/len(vals)
+    variance=sum((v-mean)**2 for v in vals)/len(vals)
+    std=variance**0.5
+    z=(current_edge_bps-mean)/std if std>1e-9 else 0.0
+    pos=sum(1 for v in vals if v>0)/len(vals)*100
+    persistence=0
+    for v in vals:
+        if v>0:persistence+=1
+        else:break
+    return {'edgeMeanBps':round(mean,3),'edgeStdBps':round(std,3),'edgeZ':round(z,3),'positiveRatePct':round(pos,1),'persistence':persistence}
+
+def _median(values):
+    xs=sorted(float(v) for v in values if v is not None)
+    if not xs:return 0.0
+    n=len(xs)
+    return xs[n//2] if n%2 else (xs[n//2-1]+xs[n//2])/2
 
 async def calculate_hypothetical(investment_usd:float=2.0):
     key=os.environ.get('JUPITER_API_KEY')
@@ -178,8 +227,12 @@ async def calculate_hypothetical(investment_usd:float=2.0):
     move_buffer_usd=investment*(SCAN_MOVE_BUFFER_BPS/10_000)
     conservative_profit_usd=raw_profit_usd-fee_allowance_usd-move_buffer_usd
     conservative_edge_bps=(conservative_profit_usd/investment*10_000) if investment else 0.0
-    confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45))
-    verdict='EXECUTE-CANDIDATE' if conservative_profit_usd>0.005 else ('WATCH' if raw_profit_usd>0 else 'REJECT')
+    hist=_rolling_edge_stats(conservative_edge_bps)
+    venue=venue_latest or {}
+    venue_spread=float(venue.get('crossVenueSpreadBps') or 0)
+    dislocation=max(0.0,min(100.0, max(0.0,hist['edgeZ'])*18.0 + min(venue_spread,20.0)*2.0))
+    confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45 + dislocation*0.08))
+    verdict='EXECUTE-CANDIDATE' if conservative_profit_usd>0.001 else ('WATCH' if raw_profit_usd>0 else 'REJECT')
 
     return {
         'status':'ok','timestamp':time.time(),'investmentUsd':round(investment,6),
@@ -192,7 +245,12 @@ async def calculate_hypothetical(investment_usd:float=2.0):
         'conservativeEdgeBps':round(conservative_edge_bps,3),
         'projectedReturnUsd':round(investment+conservative_profit_usd,8),
         'confidence':round(confidence,1),'confidenceType':'heuristic-not-statistical',
-        'verdict':verdict,'route':'SOL → USDC → SOL','router':'Jupiter Swap V2'
+        'verdict':verdict,'route':'SOL → USDC → SOL','router':'Jupiter Swap V2',
+        'leg1Venues':_route_labels(leg1),'leg2Venues':_route_labels(leg2),
+        'edgeMeanBps':hist['edgeMeanBps'],'edgeStdBps':hist['edgeStdBps'],'edgeZ':hist['edgeZ'],
+        'positiveRatePct':hist['positiveRatePct'],'persistence':hist['persistence'],
+        'crossVenueSpreadBps':round(venue_spread,3),'dislocationScore':round(dislocation,1),
+        'venueSignalAgeSec':round(max(0.0,time.time()-float(venue.get('timestamp') or time.time())),2)
     }
 
 async def continuous_market_worker():
@@ -211,11 +269,68 @@ async def continuous_market_worker():
         except Exception as exc:
             market_live_status='error'
             print(f"LIVE_SCAN_ERROR {type(exc).__name__}",flush=True)
-        await asyncio.sleep(0.8)
+        try:
+            await asyncio.wait_for(market_trigger.wait(),timeout=0.15)
+            market_trigger.clear()
+        except asyncio.TimeoutError:
+            pass
+
+async def venue_reference_worker():
+    global venue_latest,venue_live_status
+    while True:
+        try:
+            venue_live_status='scanning'
+            data=await external_call('GET',DEXSCREENER+f'/token-pairs/v1/solana/{SOL}')
+            pairs=[]
+            if isinstance(data,list):
+                for p in data:
+                    if p.get('chainId')!='solana': continue
+                    base=(p.get('baseToken') or {}).get('address')
+                    quote=(p.get('quoteToken') or {}).get('symbol','').upper()
+                    if base!=SOL or quote not in {'USDC','USDT'}: continue
+                    liq=float((p.get('liquidity') or {}).get('usd') or 0)
+                    price=float(p.get('priceUsd') or 0)
+                    if liq<50_000 or price<=0: continue
+                    pairs.append({
+                        'dex':p.get('dexId') or 'unknown','pairAddress':p.get('pairAddress') or '',
+                        'priceUsd':price,'liquidityUsd':liq,
+                        'm5':float((p.get('priceChange') or {}).get('m5') or 0),
+                        'h1':float((p.get('priceChange') or {}).get('h1') or 0),
+                        'h6':float((p.get('priceChange') or {}).get('h6') or 0),
+                        'h24':float((p.get('priceChange') or {}).get('h24') or 0),
+                    })
+            pairs=sorted(pairs,key=lambda x:x['liquidityUsd'],reverse=True)[:16]
+            if pairs:
+                by_dex={}
+                for p in pairs:
+                    if p['dex'] not in by_dex: by_dex[p['dex']]=p
+                venues=list(by_dex.values())
+                prices=[p['priceUsd'] for p in venues]
+                lo=min(venues,key=lambda x:x['priceUsd']); hi=max(venues,key=lambda x:x['priceUsd'])
+                mid=(lo['priceUsd']+hi['priceUsd'])/2
+                spread=((hi['priceUsd']-lo['priceUsd'])/mid*10_000) if mid else 0
+                snap={
+                    'timestamp':time.time(),'venues':venues[:8],'venueCount':len(venues),
+                    'lowDex':lo['dex'],'lowPrice':lo['priceUsd'],'highDex':hi['dex'],'highPrice':hi['priceUsd'],
+                    'crossVenueSpreadBps':round(spread,3),
+                    'momentum5mPct':round(_median([p['m5'] for p in venues]),3),
+                    'momentum1hPct':round(_median([p['h1'] for p in venues]),3),
+                    'momentum6hPct':round(_median([p['h6'] for p in venues]),3),
+                    'momentum24hPct':round(_median([p['h24'] for p in venues]),3),
+                }
+                venue_latest=snap;venue_history_live.appendleft(snap);venue_live_status='live'
+                if spread>=3.0: market_trigger.set()
+            else:
+                venue_live_status='no-pairs'
+        except Exception as exc:
+            venue_live_status='error'
+            print(f'VENUE_SCAN_ERROR {type(exc).__name__}',flush=True)
+        await asyncio.sleep(2.0)
 
 @app.on_event('startup')
 async def start_market_worker():
     asyncio.create_task(continuous_market_worker())
+    asyncio.create_task(venue_reference_worker())
 
 @app.get('/api/live-market')
 async def live_market():
@@ -224,7 +339,8 @@ async def live_market():
         'latest':market_latest,
         'history':list(market_history_live)[:24],
         'scanInterval':'continuous-provider-limited',
-        'providerLimit':'Jupiter requests serialized to ~1 request/second'
+        'providerLimit':'Jupiter requests serialized to ~1 request/second',
+        'venueStatus':venue_live_status,'venue':venue_latest
     }
 
 @app.post('/api/hypothetical')
@@ -241,6 +357,7 @@ async def order(input:Order, request:Request):
         raise HTTPException(400,'Invalid Solana public wallet address')
     params={'inputMint':input.inputMint,'outputMint':input.outputMint,'amount':input.amount}
     if input.taker: params['taker']=input.taker
+    if input.slippageBps is not None: params['slippageBps']=str(input.slippageBps)
     return await jupiter_order(jup_key(request),params)
 
 class Execute(BaseModel):
@@ -253,6 +370,36 @@ async def execute(payload:Execute,request:Request):
     if not re.fullmatch(r'[A-Za-z0-9+/=]+',payload.signedTransaction):
         raise HTTPException(400,'Invalid base64 signed transaction')
     return await external_call('POST',JUPITER+'/execute',headers={**jup_key(request),'Content-Type':'application/json'},json_data=payload.model_dump())
+
+class JitoBundle(BaseModel):
+    transactions:list[str]=Field(min_length=2,max_length=5)
+
+class JitoStatus(BaseModel):
+    bundleId:str=Field(min_length=16,max_length=128)
+
+@app.get('/api/jito/tip-accounts')
+async def jito_tip_accounts():
+    body=await external_call('POST',JITO+'/api/v1/getTipAccounts',json_data={'jsonrpc':'2.0','id':1,'method':'getTipAccounts','params':[]})
+    return {'accounts':body.get('result') or []}
+
+@app.post('/api/jito/bundle')
+async def jito_bundle(payload:JitoBundle):
+    for tx in payload.transactions:
+        if not 80<=len(tx)<=16000 or not re.fullmatch(r'[A-Za-z0-9+/=]+',tx):
+            raise HTTPException(400,'Invalid signed base64 transaction in bundle')
+    body,headers=await external_raw('POST',JITO+'/api/v1/bundles',json_data={
+        'jsonrpc':'2.0','id':1,'method':'sendBundle','params':[payload.transactions,{'encoding':'base64'}]
+    })
+    result=body.get('result')
+    if not result: raise HTTPException(502,'Jito did not return a bundle id')
+    return {'bundleId':result,'headerBundleId':headers.get('x-bundle-id',''),'region':'singapore'}
+
+@app.post('/api/jito/status')
+async def jito_status(payload:JitoStatus):
+    body=await external_call('POST',JITO+'/api/v1/getBundleStatuses',json_data={
+        'jsonrpc':'2.0','id':1,'method':'getBundleStatuses','params':[[payload.bundleId]]
+    })
+    return body.get('result') or {'value':[None]}
 
 class Rpc(BaseModel):
     method:str
