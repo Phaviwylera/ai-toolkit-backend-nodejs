@@ -32,7 +32,7 @@
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
         startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),roiPct:n(p.roiPct),
         fees:n(p.fees),trades:n(p.trades),wins:n(p.wins),losses:n(p.losses),winRatePct:n(p.winRatePct),
-        blocked:n(p.blocked),nofills:n(p.nofills),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
+        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
         position:p.position||null,eventCount:Array.isArray(p.events)?p.events.length:0,
         recentEvents:Array.isArray(p.events)?p.events.slice(0,8):[]
       }
@@ -44,7 +44,7 @@
   }
   function domState(){
     const g=id=>document.getElementById(id)?.textContent?.trim()||null;
-    return {feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),novaVerdict:g('novaVerdict'),titanVerdict:g('titanVerdict'),atlasVerdict:g('atlasVerdict'),vegaVerdict:g('vegaVerdict'),demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')};
+    return {feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),novaVerdict:g('novaVerdict'),titanVerdict:g('titanVerdict'),atlasVerdict:g('atlasVerdict'),vegaVerdict:g('vegaVerdict'),demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoAttempts:g('demoAttempts'),demoPostRejects:g('demoPostRejects'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')};
   }
   function capture(j){
     if(!j||typeof j!=='object')return;
