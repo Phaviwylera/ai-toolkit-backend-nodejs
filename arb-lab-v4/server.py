@@ -78,6 +78,9 @@ async def poly_js():return FileResponse(ROOT/'poly.js',media_type='text/javascri
 @app.get('/poly-demo.js')
 async def poly_demo_js():return FileResponse(ROOT/'poly-demo.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
 
+@app.get('/poly-log.js')
+async def poly_log_js():return FileResponse(ROOT/'poly-log.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
+
 @app.get('/poly.css')
 async def poly_css():return FileResponse(ROOT/'poly.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
