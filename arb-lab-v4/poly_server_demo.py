@@ -11,6 +11,12 @@ COINBASE_REST='https://api.exchange.coinbase.com'
 CLOB_WS='wss://ws-subscriptions-clob.polymarket.com/ws/market'
 RTDS_WS='wss://ws-live-data.polymarket.com'
 STATE_FILE=Path('/tmp/poly_server_demo_v1.json')
+DEMO_BALANCE=20.0
+MAX_TRADE_NOTIONAL=6.0
+FEED_FRESH_SEC=5.0
+OPEN_STABILIZE_SEC=15.0
+LAG_MIN_REMAINING_SEC=18.0
+RESOLUTION_WINDOW_SEC=75.0
 
 def _jsonish(v):
     if isinstance(v,list): return v
@@ -52,6 +58,7 @@ class PolyServerDemo:
         self.latest_model=None
         self.latest_candidate=None
         self.latest_reason='warming up'
+        self.latest_mode='WARMING'
         self.reason_counts=defaultdict(int)
         self.last_reason_count_at=0.0
         self.paper=None
@@ -302,25 +309,52 @@ class PolyServerDemo:
 
     def _model(self):
         if not all([self.market,self.spot,self.twap,self.open_ref]):return None
-        now=time.time();end=float(self.market['endTs']);remaining=max(0,end-now)
+        now=time.time();start=float(self.market['startTs']);end=float(self.market['endTs'])
+        remaining=max(0,end-now);elapsed=max(0,now-start)
         final_start=end-60
         known=self._avg_spot(final_start,now)
         known_secs=max(0,min(60,now-final_start))
         future_secs=max(0,min(60,remaining))
         drift=self._momentum()
-        future_mean=self.spot*math.exp(drift*future_secs*.20)
-        projected=((known or self.spot)*known_secs+future_mean*future_secs)/max(1,known_secs+future_secs) if remaining<=60 else future_mean
         current60=self._avg_spot(now-60,now)
         basis=self.twap-current60 if current60 else 0.0
-        projected+=basis
-        sig=self._sigma();T=max(1,min(60,remaining))
-        std=max(.00001,sig*(T**1.5)/(math.sqrt(3)*60))
-        total=math.sqrt(std*std+.00005**2)
+        sig=self._sigma()
+
+        # Early/mid-window uncertainty must remain wide. The old model incorrectly
+        # used a <=60s horizon everywhere and saturated at 99% far too early.
+        if remaining<=60:
+            future_mean=self.spot*math.exp(drift*future_secs*.18)
+            projected=((known or self.spot)*known_secs+future_mean*future_secs)/max(1,known_secs+future_secs)+basis
+            T=max(1,remaining)
+            std=max(.000015,sig*(T**1.5)/(math.sqrt(3)*60))
+        else:
+            horizon=min(remaining,240)
+            projected=self.spot*math.exp(drift*min(horizon,90)*.10)+basis
+            std=max(.00008,sig*math.sqrt(max(30,horizon))*1.15)
+
         margin=(projected-self.open_ref)/self.open_ref
-        z=max(-7,min(7,margin/total))
-        fair_up=max(.01,min(.99,_cdf(z)))
-        return {'remaining':remaining,'projected':projected,'sigma':sig,'margin':margin,'z':z,
-                'fairUp':fair_up,'fairDown':1-fair_up,'basis':basis,'drift':drift}
+        total=math.sqrt(std*std+.00006**2)
+        z=max(-5,min(5,margin/total))
+        raw_up=max(.01,min(.99,_cdf(z)))
+
+        # Shrink early-window resolution probability toward 50%; confidence grows
+        # naturally as the five-minute market approaches resolution.
+        progress=max(0,min(1,elapsed/300))
+        reliability=.30+.70*(progress**.72)
+        fair_up=max(.02,min(.98,.5+(raw_up-.5)*reliability))
+
+        series=self._series()
+        impulse5=0.0
+        if len(series)>=2:
+            recent=[x for x in series if x['t']>=now-5]
+            if len(recent)>=2 and recent[0]['p']>0:
+                impulse5=math.log(recent[-1]['p']/recent[0]['p'])*10_000
+        lead_bps=(self.spot/self.twap-1)*10_000 if self.twap else 0.0
+        lag_score=abs(lead_bps)+.65*abs(impulse5)
+
+        return {'remaining':remaining,'elapsed':elapsed,'projected':projected,'sigma':sig,'margin':margin,'z':z,
+                'rawFairUp':raw_up,'fairUp':fair_up,'fairDown':1-fair_up,'basis':basis,'drift':drift,
+                'leadBps':lead_bps,'impulse5Bps':impulse5,'lagScore':lag_score,'reliability':reliability}
 
     def _candidate(self,m):
         candidates=[]
@@ -335,21 +369,48 @@ class PolyServerDemo:
 
     def _reason(self,m,best,confidence):
         now=time.time()
-        fresh=max(now-self.spot_ts if self.spot_ts else 1e9,now-self.twap_ts if self.twap_ts else 1e9)<2.5
+        fresh=max(now-self.spot_ts if self.spot_ts else 1e9,now-self.twap_ts if self.twap_ts else 1e9)<FEED_FRESH_SEC
         min_sh=float(self.market.get('minOrderSize') or 0)
         liquid=best and (best['size']<=0 or best['size']>=max(.01,min_sh))
         price_ok=best and .03<=best['ask']<=.97
-        time_ok=m and 5<=m['remaining']<=55
-        if not self.open_trusted:return 'opening reference not trusted'
-        if not fresh:return 'reference feed stale'
-        if not best:return 'order book unavailable'
-        if not liquid:return 'insufficient best-ask liquidity'
-        if not price_ok:return 'price outside safety band'
-        if not time_ok:return 'outside final 55-second window'
-        if confidence<70:return 'model confidence below 70%'
-        if best['fair']<.72:return 'model probability below 72%'
-        if best['net']<.02:return 'fee-adjusted edge below 2c'
-        return 'OPPORTUNITY'
+        if not self.open_trusted:
+            self.latest_mode='WAIT_OPEN';return 'opening reference not trusted'
+        if not fresh:
+            self.latest_mode='WAIT_FEED';return 'reference feed stale'
+        if not best:
+            self.latest_mode='WAIT_BOOK';return 'order book unavailable'
+        if not liquid:
+            self.latest_mode='WAIT_LIQUIDITY';return 'insufficient best-ask liquidity'
+        if not price_ok:
+            self.latest_mode='WAIT_PRICE';return 'price outside safety band'
+        if m['elapsed']<OPEN_STABILIZE_SEC:
+            self.latest_mode='OPEN_STABILIZE';return 'opening stabilization period'
+        if m['remaining']<4:
+            self.latest_mode='CLOSE_LOCK';return 'too close to resolution'
+
+        # Late-stage outcome strategy.
+        if m['remaining']<=RESOLUTION_WINDOW_SEC:
+            self.latest_mode='RESOLUTION'
+            if confidence<72:return 'resolution confidence below 72%'
+            if best['fair']<.68:return 'resolution probability below 68%'
+            if best['net']<.018:return 'resolution net edge below 1.8c'
+            return 'OPPORTUNITY_RESOLUTION'
+
+        # Main strategy: exploit a measurable fast-price/TWAP lead while the
+        # Polymarket ask still lags. This is allowed through most of the window.
+        if m['remaining']>=LAG_MIN_REMAINING_SEC:
+            self.latest_mode='LAG_SCALP'
+            direction=1 if best['side']=='UP' else -1
+            aligned=(m['leadBps']*direction>.20 and m['impulse5Bps']*direction>-.10)
+            if not aligned:return 'lag direction not aligned'
+            if m['lagScore']<.45:return 'BTC-to-TWAP lead below 0.45bps'
+            if confidence<66:return 'lag confidence below 66%'
+            if best['fair']<.60:return 'lag fair probability below 60%'
+            if best['net']<.025:return 'lag net edge below 2.5c'
+            return 'OPPORTUNITY_LAG'
+
+        self.latest_mode='WAIT_TIME'
+        return 'timing gate'
 
     def _equity(self):
         p=self.paper
@@ -377,7 +438,8 @@ class PolyServerDemo:
         ask0=float(best['ask']);key='up' if best['side']=='UP' else 'down'
         size0=float(self.bbo[key].get('askSize') or 0)
         unit=ask0+_fee_per_share(ask0)
-        affordable=math.floor((p['cash']/unit)*100)/100 if unit>0 else 0
+        risk_cash=min(p['cash'],MAX_TRADE_NOTIONAL)
+        affordable=math.floor((risk_cash/unit)*100)/100 if unit>0 else 0
         shares=math.floor(min(affordable,size0 if size0>0 else affordable)*100)/100
         if shares<min_sh or shares<=0:
             p['blocked']+=1
@@ -397,8 +459,10 @@ class PolyServerDemo:
             p['cash']-=total;p['fees']+=fee
             p['position']={'marketSlug':market['slug'],'side':best['side'],'entryPrice':ask,'shares':shares,
                            'entryNotional':shares*ask,'entryFee':fee,'entryTotalCost':total,'entryAt':time.time(),
-                           'openRef':self.open_ref,'modelFair':best['fair'],'confidence':confidence}
-            self._record('BUY',side=best['side'],price=ask,detail=f'filled live ask after 350ms; {shares:.2f} shares; fee USD {fee:.5f}')
+                           'openRef':self.open_ref,'modelFair':best['fair'],'confidence':confidence,
+                           'mode':self.latest_mode,'entryNetEdge':best['net'],'entryLeadBps':m.get('leadBps',0),
+                           'entryImpulse5Bps':m.get('impulse5Bps',0)}
+            self._record('BUY',side=best['side'],price=ask,detail=f'{self.latest_mode}; filled live ask after 350ms; {shares:.2f} shares; fee USD {fee:.5f}')
         finally:self.pending=False
 
     async def _try_sell(self,reason):
@@ -459,13 +523,16 @@ class PolyServerDemo:
                 continue
             best=self._candidate(m);self.latest_candidate=best
             fresh_age=max(now-self.spot_ts if self.spot_ts else 1e9,now-self.twap_ts if self.twap_ts else 1e9)
-            confidence=max(0,min(100,(35 if self.open_trusted else 5)+(20 if fresh_age<2.5 else 5)+(20 if m['remaining']<=60 else 5)+min(20,len(self.spot_sec)/4)+min(5,abs(m['z'])*2)))
+            data_score=min(18,len(self.spot_sec)/5)
+            lead_score=min(18,m.get('lagScore',0)*10)
+            time_score=14 if m['remaining']<=RESOLUTION_WINDOW_SEC else 8
+            confidence=max(0,min(100,(32 if self.open_trusted else 5)+(18 if fresh_age<FEED_FRESH_SEC else 4)+data_score+lead_score+time_score+min(8,abs(m['z'])*1.5)))
             reason=self._reason(m,best,confidence);self.latest_reason=reason
             if now-last_audit>=1:
                 self.reason_counts[reason]+=1;last_audit=now;p['candidatesSeen']+=1
-            if reason=='OPPORTUNITY' and best:
+            if reason.startswith('OPPORTUNITY_') and best:
                 p['signals']+=1
-                if not p.get('position') and not self.pending and now-p.get('lastOpportunityAt',0)>2:
+                if not p.get('position') and not self.pending and now-p.get('lastOpportunityAt',0)>3:
                     p['lastOpportunityAt']=now
                     await self._enter(best,m,confidence)
             pos=p.get('position')
@@ -475,9 +542,14 @@ class PolyServerDemo:
                     bid=float(bid);fee=pos['shares']*_fee_per_share(bid)
                     net=pos['shares']*bid-fee;pnl=net-pos['entryTotalCost']
                     fair=m['fairUp'] if pos['side']=='UP' else m['fairDown']
-                    if pnl>=max(.02,pos['entryTotalCost']*.015):await self._try_sell('take-profit on live bid')
-                    elif fair-bid<=.01 and pnl>0:await self._try_sell('pricing gap converged')
-                    elif fair<pos['entryPrice']-.03:await self._try_sell('model invalidated')
+                    age=now-float(pos.get('entryAt') or now)
+                    direction=1 if pos['side']=='UP' else -1
+                    lead_reversed=m.get('leadBps',0)*direction<-.15
+                    if pnl>=max(.025,pos['entryTotalCost']*.012):await self._try_sell('take-profit on live bid')
+                    elif pos.get('mode')=='LAG_SCALP' and fair-bid<=.012 and pnl>0:await self._try_sell('lag pricing gap converged')
+                    elif pos.get('mode')=='LAG_SCALP' and lead_reversed:await self._try_sell('fast-price lead reversed')
+                    elif pos.get('mode')=='LAG_SCALP' and age>=22:await self._try_sell('lag scalp time stop')
+                    elif fair<pos['entryPrice']-.035:await self._try_sell('model invalidated')
                     elif m['remaining']<=4:await self._try_sell('market near close')
             eq=self._equity();p['peakEquity']=max(p['peakEquity'],eq)
             if p['peakEquity']>0:p['maxDrawdown']=max(p['maxDrawdown'],(p['peakEquity']-eq)/p['peakEquity'])
@@ -491,7 +563,7 @@ class PolyServerDemo:
             'bbo':self.bbo,'spot':self.spot,'spotAgeSec':time.time()-self.spot_ts if self.spot_ts else None,
             'twap':self.twap,'twapAgeSec':time.time()-self.twap_ts if self.twap_ts else None,
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
-            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,
+            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,
             'reasonCounts':dict(self.reason_counts),
             'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
                      'winRatePct':(p.get('wins',0)/p.get('trades',1)*100 if p.get('trades',0) else 0)}
