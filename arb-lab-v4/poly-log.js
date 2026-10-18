@@ -18,7 +18,7 @@
   function reduceServer(j){
     const m=j?.market||{},b=j?.bbo||{},model=j?.model||{},c=j?.candidate||{},p=j?.paper||{};
     return {
-      serverTime:n(j?.serverTime),feed:j?.feed||{},
+      revision:j?.revision||null,risk:j?.risk||{},serverTime:n(j?.serverTime),feed:j?.feed||{},
       market:{slug:m.slug||null,startTs:n(m.startTs),endTs:n(m.endTs),acceptingOrders:!!m.acceptingOrders,minOrderSize:n(m.minOrderSize),minTickSize:n(m.minTickSize),volume:n(m.volume),liquidity:n(m.liquidity)},
       bbo:{
         up:{bid:n(b?.up?.bid),ask:n(b?.up?.ask),bidSize:n(b?.up?.bidSize),askSize:n(b?.up?.askSize)},
@@ -29,10 +29,10 @@
       candidate:c&&Object.keys(c).length?{side:c.side||null,ask:n(c.ask),fair:n(c.fair),fee:n(c.fee),raw:n(c.raw),net:n(c.net),size:n(c.size)}:null,
       decision:j?.decision||null,mode:j?.mode||null,core:j?.core||null,pair:j?.pair||null,reasonCounts:j?.reasonCounts||{},
       paper:{
-        sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
+        revision:p.revision||null,sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
         startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),totalPnl:n(p.totalPnl),unrealizedPnl:n(p.unrealizedPnl),roiPct:n(p.roiPct),
         fees:n(p.fees),trades:n(p.trades),wins:n(p.wins),losses:n(p.losses),winRatePct:n(p.winRatePct),
-        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),pairAttempts:n(p.pairAttempts),makerQuotes:n(p.makerQuotes),makerFills:n(p.makerFills),makerHedgeFills:n(p.makerHedgeFills),makerMerges:n(p.makerMerges),makerResidualExits:n(p.makerResidualExits),makerResidualSettles:n(p.makerResidualSettles),inventoryQuotes:n(p.inventoryQuotes),inventoryFills:n(p.inventoryFills),inventoryCancels:n(p.inventoryCancels),inventoryTakerHedges:n(p.inventoryTakerHedges),inventoryMerges:n(p.inventoryMerges),inventoryResidualSettles:n(p.inventoryResidualSettles),inventoryRecoveryExits:n(p.inventoryRecoveryExits),inventory:p.inventory||null,matchedSets:n(p.matchedSets),lockedPairPnl:n(p.lockedPairPnl),avgMatchedSetCost:n(p.avgMatchedSetCost),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
+        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),pairAttempts:n(p.pairAttempts),makerQuotes:n(p.makerQuotes),makerFills:n(p.makerFills),makerHedgeFills:n(p.makerHedgeFills),makerMerges:n(p.makerMerges),makerResidualExits:n(p.makerResidualExits),makerResidualSettles:n(p.makerResidualSettles),inventoryQuotes:n(p.inventoryQuotes),inventoryFills:n(p.inventoryFills),inventoryCancels:n(p.inventoryCancels),inventoryTakerHedges:n(p.inventoryTakerHedges),inventoryMerges:n(p.inventoryMerges),inventoryResidualSettles:n(p.inventoryResidualSettles),inventoryRecoveryExits:n(p.inventoryRecoveryExits),inventory:p.inventory||null,matchedSets:n(p.matchedSets),lockedPairPnl:n(p.lockedPairPnl),avgMatchedSetCost:n(p.avgMatchedSetCost),maxDrawdown:n(p.maxDrawdown),maxDrawdownPct:n(p.maxDrawdownPct),maxDrawdownUsd:n(p.maxDrawdownUsd),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
         position:p.position||null,eventCount:Array.isArray(p.events)?p.events.length:0,
         recentEvents:Array.isArray(p.events)?p.events.slice(0,8):[]
       }

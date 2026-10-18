@@ -32,8 +32,11 @@ MAKER_PAIRING_ENABLED=False  # legacy V10/V11 one-sided maker path remains disab
 INVENTORY_V12_ENABLED=True
 INVENTORY_PAIR_TARGET=0.985
 INVENTORY_MAX_FIRST_PRICE=0.20
-INVENTORY_MAX_RESIDUAL_USD=1.00
-INVENTORY_MAX_INITIAL_GAP=0.045
+INVENTORY_MAX_RESIDUAL_USD=0.50
+INVENTORY_MAX_HOLD_SEC=15.0
+INVENTORY_STOP_LOSS_USD=0.15
+ENGINE_REVISION="12.1-risk-fix"
+INVENTORY_MAX_INITIAL_GAP=0.0
 INVENTORY_OPEN_AFTER_SEC=20.0
 INVENTORY_STOP_NEW_REMAINING_SEC=75.0
 INVENTORY_QUOTE_TTL_SEC=20.0
@@ -169,7 +172,7 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':12,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':12,'revision':ENGINE_REVISION,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
@@ -606,6 +609,9 @@ class PolyServerDemo:
     def _inventory_get(self):
         if not self.paper or not self.market:return None
         inv=self.paper.get('inventory')
+        if isinstance(inv,dict) and inv.get('marketSlug')!=self.market.get('slug') and self._inventory_totals(inv).get('residualSide'):
+            self.paper['status']='risk_locked';self.paper['riskLockReason']='unsettled previous-market inventory requires reconciliation'
+            return None
         if not isinstance(inv,dict) or inv.get('marketSlug')!=self.market.get('slug'):
             inv=self._inventory_new_market()
         return inv
@@ -664,6 +670,7 @@ class PolyServerDemo:
     def _inventory_merge_available(self,inv):
         totals=self._inventory_totals(inv);qty=float(totals['matched'] or 0)
         if qty<=1e-9:return False
+        self._inventory_cancel_quote(inv,'complete set closes outstanding quote')
         up_cost=self._inventory_consume(inv['upLots'],qty)
         dn_cost=self._inventory_consume(inv['downLots'],qty)
         cost=up_cost+dn_cost;payout=qty;pnl=payout-cost;pair_cost=cost/qty
@@ -677,10 +684,31 @@ class PolyServerDemo:
         inv['lastAction']=f'merged {qty:.2f} pairs at {pair_cost:.4f}'
         return True
 
+    def _inventory_feed_ready(self):
+        now=time.time()
+        return (all(self.feed.get(k)=='live' for k in ('market','clob','rtds'))
+                and max(now-self.spot_ts,now-self.twap_ts)<FEED_FRESH_SEC
+                and self.market and self.market.get('acceptingOrders',False))
+
+    def _update_risk(self):
+        p=self.paper
+        if not p:return
+        eq=self._equity();peak=max(float(p.get('peakEquity') or p['startingBalance']),eq)
+        p['peakEquity']=peak
+        p['maxDrawdownUsd']=max(float(p.get('maxDrawdownUsd') or 0),peak-eq)
+        p['maxDrawdown']=max(float(p.get('maxDrawdown') or 0),(peak-eq)/peak if peak>0 else 0)
+        if min(float(p.get('realizedPnl') or 0),eq-float(p['startingBalance']))<=-SESSION_LOSS_LIMIT_USD:
+            p['status']='risk_locked';p['riskLockReason']='session realized or marked loss limit reached'
+        if int(p.get('consecutiveLosses') or 0)>=2:
+            p['status']='risk_locked';p['riskLockReason']='two consecutive losses'
+
     def _inventory_first_leg_candidate(self,inv,m):
         if not INVENTORY_V12_ENABLED or not self.open_trusted or not self.market:return None
         if self.paper.get('status')!='running' or self.paper.get('position') or self.pending:return None
         if self._inventory_has_residual():return None
+        self._update_risk()
+        if self.paper.get('status')!='running' or not self._inventory_feed_ready():return None
+        if time.time()<float(self.paper.get('cooldownUntil') or 0) or time.time()>=self.paper['endsAt']:return None
         if int(inv.get('cycles') or 0)>=INVENTORY_MAX_CYCLES_PER_MARKET:return None
         now=time.time();elapsed=now-float(self.market.get('startTs') or now);remaining=float(self.market.get('endTs') or 0)-now
         if elapsed<INVENTORY_OPEN_AFTER_SEC or remaining<=INVENTORY_STOP_NEW_REMAINING_SEC:return None
@@ -695,6 +723,11 @@ class PolyServerDemo:
             maker_px=min(INVENTORY_MAX_FIRST_PRICE,_floor_tick(max(bid,min(ask-tick,INVENTORY_MAX_FIRST_PRICE)),tick))
             if maker_px<.03 or maker_px>=ask-1e-9:continue
             if shares*maker_px>min(INVENTORY_MAX_RESIDUAL_USD,float(self.paper.get('cash') or 0))+1e-9:continue
+            hedge_cost=shares*(oppask+_fee_per_share(oppask))
+            if float(self.bbo[opp].get('askSize') or 0)<shares:continue
+            if shares*maker_px+hedge_cost>float(self.paper['cash']):continue
+            loss_budget=SESSION_LOSS_LIMIT_USD+min(float(self.paper['realizedPnl']),self._equity()-float(self.paper['startingBalance']))
+            if shares*maker_px>loss_budget:continue
             projected=maker_px+oppask+_fee_per_share(oppask)
             if projected>INVENTORY_PAIR_TARGET+INVENTORY_MAX_INITIAL_GAP:continue
             direction=1 if side=='up' else -1
@@ -723,10 +756,21 @@ class PolyServerDemo:
     def _inventory_process_quote(self,inv,m):
         q=inv.get('quote')
         if not q:return
+        totals=self._inventory_totals(inv)
+        if q.get('kind')=='COMPLEMENT':
+            res=totals.get('residualSide')
+            if not res or res==q['side'] or abs(totals[res]['shares']-float(q['shares']))>1e-9:
+                self._inventory_cancel_quote(inv,'orphan complement cancelled');return
+        elif self.paper.get('status')!='running' or not self._inventory_feed_ready() or time.time()<float(self.paper.get('cooldownUntil') or 0):
+            self._inventory_cancel_quote(inv,'entry risk/feed gate');return
         side=q['side'];tick=max(.001,float(self.market.get('minTickSize') or .01))
         if time.time()-float(q.get('createdAt') or 0)>INVENTORY_QUOTE_TTL_SEC and q.get('kind')=='FIRST':
             self._inventory_cancel_quote(inv,'first-leg quote TTL expired');return
         if q.get('kind')=='FIRST':
+            candidate=self._inventory_first_leg_candidate(inv,m)
+            opp='down' if side=='up' else 'up';ask=self.bbo[opp].get('ask')
+            if not candidate or candidate['side']!=side or ask is None or float(q['price'])+float(ask)+_fee_per_share(float(ask))>INVENTORY_PAIR_TARGET or float(q['shares'])*float(q['price'])>INVENTORY_MAX_RESIDUAL_USD:
+                self._inventory_cancel_quote(inv,'entry no longer hedgeable within risk cap');return
             direction=1 if side=='up' else -1
             if float(m.get('leadBps') or 0)*direction<-0.05:
                 self._inventory_cancel_quote(inv,'cheap-leg reversal signal failed');return
@@ -757,10 +801,13 @@ class PolyServerDemo:
         if allin>INVENTORY_PAIR_TARGET+1e-9:return False
         total0=shares*(ask0+_fee_per_share(ask0))
         if total0>float(self.paper.get('cash') or 0)+1e-9:return False
+        self._inventory_cancel_quote(inv,'cancel maker complement before taker hedge')
+        version=self.market_version;session=self.paper
         self.pending=True
         self._record('INV_HEDGE_ORDER',side=opp.upper(),price=ask0,detail=f'{shares:.2f}sh; projected pair {allin:.4f}')
         await asyncio.sleep(EXECUTION_LATENCY_SEC)
         try:
+            if self.paper is not session or self.market_version!=version or not self._inventory_feed_ready():return False
             ask=self.bbo[opp].get('ask');avail=float(self.bbo[opp].get('askSize') or 0)
             if ask is None or avail<shares:return False
             ask=float(ask);fee=shares*_fee_per_share(ask);fresh=res_unit+ask+_fee_per_share(ask)
@@ -772,31 +819,44 @@ class PolyServerDemo:
             return True
         finally:self.pending=False
 
-    async def _inventory_recovery_exit(self,inv,res_side):
+    async def _inventory_recovery_exit(self,inv,res_side,force=False):
         if self.pending:return False
         totals=self._inventory_totals(inv);shares=float(totals[res_side]['shares'] or 0);cost=float(totals[res_side]['cost'] or 0)
         bid=self.bbo[res_side].get('bid');avail=float(self.bbo[res_side].get('bidSize') or 0)
         if bid is None or shares<=0 or avail<shares:return False
         bid=float(bid);fee=shares*_fee_per_share(bid);net=shares*bid-fee;pnl=net-cost
-        if pnl<INVENTORY_RECOVERY_PROFIT_USD:return False
+        if not force and pnl<INVENTORY_RECOVERY_PROFIT_USD:return False
+        self._inventory_cancel_quote(inv,'cancel complement before residual exit')
+        version=self.market_version;session=self.paper
         self.pending=True
         await asyncio.sleep(EXECUTION_LATENCY_SEC)
         try:
+            if self.paper is not session or self.market_version!=version or not self._inventory_feed_ready():return False
             bid2=self.bbo[res_side].get('bid');avail2=float(self.bbo[res_side].get('bidSize') or 0)
             if bid2 is None or avail2<shares:return False
             bid2=float(bid2);fee2=shares*_fee_per_share(bid2);net2=shares*bid2-fee2;pnl2=net2-cost
-            if pnl2<0:return False
+            if not force and pnl2<0:return False
             self._inventory_consume(inv[res_side+'Lots'],shares)
-            self.paper['cash']+=net2;self.paper['fees']+=fee2;self.paper['realizedPnl']+=pnl2;self.paper['trades']+=1;self.paper['wins']+=1
+            self.paper['cash']+=net2;self.paper['fees']+=fee2;self.paper['realizedPnl']+=pnl2;self.paper['trades']+=1
+            if pnl2>=0:
+                self.paper['wins']+=1;self.paper['consecutiveLosses']=0
+            else:
+                self.paper['losses']+=1;self.paper['consecutiveLosses']+=1
+                self.paper['cooldownUntil']=time.time()+LOSS_COOLDOWN_SEC
             self.paper['inventoryRecoveryExits']=int(self.paper.get('inventoryRecoveryExits') or 0)+1
-            inv['status']='RECOVERED';inv['lastAction']='residual recovered without loss'
-            self._record('INV_RECOVERY_EXIT',side=res_side.upper(),price=bid2,pnl=pnl2,detail='residual exited at non-negative recovery')
+            inv['status']='EXITED';inv['lastAction']='risk exit' if force else 'profitable recovery'
+            self._update_risk()
+            self._record('INV_RISK_EXIT' if force else 'INV_RECOVERY_EXIT',side=res_side.upper(),price=bid2,pnl=pnl2,detail=inv['lastAction'])
             return True
         finally:self.pending=False
 
     async def _inventory_step(self,m):
-        if not INVENTORY_V12_ENABLED or not self.paper or not self.market or not m:return
+        if not INVENTORY_V12_ENABLED or not self.paper or not self.market:return
         inv=self._inventory_get()
+        if inv is None:return
+        self._update_risk()
+        if not self._inventory_feed_ready():
+            self._inventory_cancel_quote(inv,'feed stale; fills paused');return
         self._inventory_process_quote(inv,m)
         self._inventory_merge_available(inv)
         totals=self._inventory_totals(inv);res=totals.get('residualSide')
@@ -805,7 +865,16 @@ class PolyServerDemo:
                 self._inventory_cancel_quote(inv,'same-side quote forbidden while residual exists')
             unit=float(totals[res]['unitCost'] or 0)
             if await self._inventory_taker_complement(inv,res,unit):return
-            if await self._inventory_recovery_exit(inv,res):return
+            age=time.time()-min(float(lot['t']) for lot in inv[res+'Lots'])
+            bid=self.bbo[res].get('bid')
+            pnl=(float(bid)-_fee_per_share(float(bid)))*totals[res]['shares']-totals[res]['cost'] if bid is not None else 0
+            force=(age>=INVENTORY_MAX_HOLD_SEC or pnl<=-INVENTORY_STOP_LOSS_USD
+                   or self.paper.get('status')!='running' or time.time()>=self.paper['endsAt']
+                   or float(self.market['endTs'])-time.time()<=15)
+            if await self._inventory_recovery_exit(inv,res,force=force):return
+            if force:
+                self._inventory_cancel_quote(inv,'risk exit pending executable liquidity')
+                inv['status']='EXIT_PENDING';inv['lastAction']='risk exit waiting for liquidity';return
             opp='down' if res=='up' else 'up'
             max_opp=_floor_tick(INVENTORY_PAIR_TARGET-unit,float(self.market.get('minTickSize') or .01))
             if max_opp>=.03 and not inv.get('quote'):
@@ -816,6 +885,8 @@ class PolyServerDemo:
                     if px>=.03:self._inventory_place_quote(inv,opp,px,float(totals[res]['shares']),'COMPLEMENT')
             inv['status']='RESIDUAL';inv['lastAction']=f'waiting to pair {totals[res]["shares"]:.2f} {res.upper()} shares'
             return
+        if inv.get('quote') and inv['quote'].get('kind')=='COMPLEMENT':
+            self._inventory_cancel_quote(inv,'orphan complement cancelled')
         if inv.get('quote'):return
         cand=self._inventory_first_leg_candidate(inv,m)
         if cand:self._inventory_place_quote(inv,cand['side'],cand['price'],cand['shares'],'FIRST')
@@ -839,6 +910,8 @@ class PolyServerDemo:
         else:p['losses']+=1;p['consecutiveLosses']=int(p.get('consecutiveLosses') or 0)+1
         self._record('INV_RESIDUAL_SETTLE',side=res.upper(),price=1.0 if res==winner else 0.0,pnl=pnl,detail=f'bounded residual; winner {winner.upper()}; no forced loss sale')
         inv['status']='SETTLED';inv['lastAction']=f'residual settled {pnl:+.4f}'
+        if pnl<0:p['cooldownUntil']=time.time()+LOSS_COOLDOWN_SEC
+        self._update_risk()
         if p['realizedPnl']<=-SESSION_LOSS_LIMIT_USD or int(p.get('consecutiveLosses') or 0)>=2:
             p['status']='risk_locked';p['riskLockReason']='V12 bounded residual settlement risk lock'
 
@@ -1100,15 +1173,20 @@ class PolyServerDemo:
     async def _try_direct_pair(self,pair):
         if self.pending or not self.paper or not self.market or not pair.get('directEligible'):return False
         p=self.paper;slug=self.market.get('slug')
+        self._update_risk()
+        if p.get('status')!='running' or time.time()<float(p.get('cooldownUntil') or 0) or time.time()>=p['endsAt'] or not self._inventory_feed_ready():return False
         if slug in (p.get('pairMarkets') or []):return False
         shares=max(5.0,float(self.market.get('minOrderSize') or 0))
         if float(self.bbo['up'].get('askSize') or 0)<shares or float(self.bbo['down'].get('askSize') or 0)<shares:return False
         total=shares*float(pair['takerPairCost'])
         if total>min(float(p['cash']),COMPLETE_SET_MAX_NOTIONAL):return False
+        version=self.market_version
         self.pending=True;p['pairAttempts']=int(p.get('pairAttempts') or 0)+1
         self._record('PAIR_ORDER',detail=f'direct complete-set paper attempt {shares:.2f} pairs; initial all-in {pair["takerPairCost"]:.4f}')
         await asyncio.sleep(EXECUTION_LATENCY_SEC)
         try:
+            self._update_risk()
+            if self.paper is not p or self.market_version!=version or p.get('status')!='running' or not self._inventory_feed_ready():return False
             fresh=self._pair_state()
             if not fresh.get('ready') or not fresh.get('directEligible'):
                 p['nofills']+=1;self._record('PAIR_NOFILL',detail='pair edge disappeared during 350ms latency');return False
@@ -1361,6 +1439,7 @@ class PolyServerDemo:
             p=self.paper
             if not p:continue
             now=time.time()
+            self._update_risk()
             if now>=p['endsAt'] and not p.get('position') and not self._inventory_has_residual():
                 p['status']='complete';self._save();continue
             await self._maker_step()
@@ -1371,7 +1450,7 @@ class PolyServerDemo:
                     self._inventory_cancel_quote(inv,'direct executable complete set takes priority')
                 await self._try_direct_pair(pair)
             m=self._model();self.latest_model=m
-            if m:await self._inventory_step(m)
+            if self.market:await self._inventory_step(m or {})
             if not m:
                 self.latest_candidate=None;self.latest_reason='waiting for live spot/TWAP/open reference'
                 self._save();continue
@@ -1432,10 +1511,11 @@ class PolyServerDemo:
             self._save()
 
     def snapshot(self):
+        self._update_risk()
         p=self.paper or {}
         eq=self._equity() if self.paper else 0
         return {
-            'status':'ok','serverTime':time.time(),'feed':dict(self.feed),'market':self.market,
+            'status':'ok','revision':ENGINE_REVISION,'serverTime':time.time(),'feed':dict(self.feed),'market':self.market,
             'bbo':self.bbo,'spot':self.spot,'spotAgeSec':time.time()-self.spot_ts if self.spot_ts else None,
             'twap':self.twap,'twapAgeSec':time.time()-self.twap_ts if self.twap_ts else None,
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
@@ -1445,10 +1525,10 @@ class PolyServerDemo:
                     'alignmentSide':self.alignment_side,'alignmentAgeSec':max(0,time.time()-self.alignment_since) if self.alignment_since else 0,
                     'executionLatencyMs':int(EXECUTION_LATENCY_SEC*1000),'maxEntryChase':MAX_ENTRY_CHASE,
                     'inventoryV12Enabled':INVENTORY_V12_ENABLED,'inventoryPairTarget':INVENTORY_PAIR_TARGET,
-                    'inventoryMaxResidualUsd':INVENTORY_MAX_RESIDUAL_USD,'inventoryMaxFirstPrice':INVENTORY_MAX_FIRST_PRICE},
+                    'inventoryMaxHoldSec':INVENTORY_MAX_HOLD_SEC,'inventoryStopLossUsd':INVENTORY_STOP_LOSS_USD,'inventoryMaxInitialGap':INVENTORY_MAX_INITIAL_GAP,'inventoryMaxResidualUsd':INVENTORY_MAX_RESIDUAL_USD,'inventoryMaxFirstPrice':INVENTORY_MAX_FIRST_PRICE},
             'history':list(self.visual_history)[-240:],
             'reasonCounts':dict(self.reason_counts),
-            'paper':{**p,'equity':eq,
+            'paper':{**p,'revision':ENGINE_REVISION,'equity':eq,'maxDrawdownPct':100*float(p.get('maxDrawdown') or 0),
                      'totalPnl':(eq-float(p.get('startingBalance',20))) if p else 0,
                      'unrealizedPnl':((eq-float(p.get('startingBalance',20)))-float(p.get('realizedPnl') or 0)) if p else 0,
                      'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
