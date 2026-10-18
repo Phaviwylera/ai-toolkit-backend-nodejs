@@ -39,6 +39,7 @@ const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
     set('titanVerdict',ft,/APPROVE/.test(ft)?'good':/REJECT/.test(ft)?'bad':'warn');
     set('titanSummary',t.summary||'Waiting for risk checks.');
     set('coreFinal',String(core.final||ft),/APPROVE/.test(core.final||ft)?'good':/REJECT/.test(core.final||ft)?'bad':'warn');
+    set('mobileDockCore',String(core.final||ft),/APPROVE/.test(core.final||ft)?'good':/REJECT/.test(core.final||ft)?'bad':'warn');
   }
 
   function render(j){
@@ -52,7 +53,8 @@ const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
     set('clock',istClock(new Date(now*1000))+' IST');
     set('marketState',m.acceptingOrders?'ACCEPTING ORDERS':'READ ONLY',m.acceptingOrders?'good':'warn');
     set('question',m.startTs&&m.endTs?('Bitcoin Up or Down · '+istMarket(m.startTs)+' – '+istMarket(m.endTs)+' IST'):(m.question||'Bitcoin Up or Down · 5m'));
-    set('timeLeft',String(Math.floor(left/60)).padStart(2,'0')+':'+String(Math.floor(left%60)).padStart(2,'0'));
+    const leftText=String(Math.floor(left/60)).padStart(2,'0')+':'+String(Math.floor(left%60)).padStart(2,'0');
+    set('timeLeft',leftText);set('mobileDockTimer',leftText);
     set('volume','$'+fmt(m.volume,0));set('liquidity','$'+fmt(m.liquidity,0));set('minOrder',m.minOrderSize?fmt(m.minOrderSize,2)+' shares':'—');
     if($('marketLink')&&m.slug)$('marketLink').href='https://polymarket.com/event/'+encodeURIComponent(m.slug);
 
@@ -79,6 +81,7 @@ const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
     set('orbResidual',residual,paper.position?'warn':'good');
 
     set('spotPrice',num(j.spot)==null?'$—':'$'+fmt(j.spot,2));
+    set('mobileDockBtc',num(j.spot)==null?'—':'$'+fmt(j.spot,0));
     set('twapPrice',num(j.twap)==null?'$—':'$'+fmt(j.twap,2));
     set('openRef',num(j.openRef)==null?'WAIT NEXT OPEN':'$'+fmt(j.openRef,2));
     set('projectedTwap',num(model.projected)==null?'$—':'$'+fmt(model.projected,2));
@@ -336,7 +339,22 @@ const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
     const p=await Notification.requestPermission();state.alerts=p==='granted';set('alertsBtn',state.alerts?'ALERTS ENABLED':'ALERTS '+p.toUpperCase());
   }
 
+  function initMobileDock(){
+    const dock=document.querySelector('.mobileDock');if(!dock)return;
+    const links=[...dock.querySelectorAll('a[href^="#"]')];
+    for(const a of links)a.addEventListener('click',()=>{for(const x of links)x.classList.remove('active');a.classList.add('active')});
+    if(!('IntersectionObserver' in window))return;
+    const sections=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    const obs=new IntersectionObserver(entries=>{
+      const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+      if(!visible)return;
+      for(const a of links)a.classList.toggle('active',a.getAttribute('href')==='#'+visible.target.id);
+    },{rootMargin:'-20% 0px -62% 0px',threshold:[.01,.15,.35]});
+    for(const el of sections)obs.observe(el);
+  }
+
   function boot(){
+    initMobileDock();
     if($('alertsBtn'))$('alertsBtn').onclick=alerts;
     poll();requestAnimationFrame(drawChart);requestAnimationFrame(drawOrb);requestAnimationFrame(drawLifecycle);requestAnimationFrame(drawEdgeMatrix);requestAnimationFrame(drawHedgeFlow);
   }
