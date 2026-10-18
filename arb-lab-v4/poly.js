@@ -60,6 +60,23 @@
     set('downBbo',(num(down.bid)==null?'—':fmt(down.bid,3))+' / '+(num(down.ask)==null?'—':fmt(down.ask,3)));
     set('upAsk',num(up.ask)==null?'—':pct(up.ask));set('downAsk',num(down.ask)==null?'—':pct(down.ask));
 
+    const pair=j.pair||{};
+    const pairEdge=num(pair.lockedEdgePerShare),pairCost=num(pair.takerPairCost),pairRaw=num(pair.rawPairCost);
+    const residual=paper.position?((paper.position.side||'NONE')+' '+fmt(paper.position.shares,2)+' sh'):'NONE';
+    const lockedPnl=Number(paper.lockedPairPnl||0);
+    set('pairRaw',pairRaw==null?'—':pairRaw.toFixed(4));
+    set('pairCost',pairCost==null?'—':pairCost.toFixed(4));
+    set('pairEdge',pairEdge==null?'—':((pairEdge>=0?'+':'')+(pairEdge*100).toFixed(2)+'c'),pairEdge>0?'good':'bad');
+    set('makerPair',num(pair.makerQuoteSum)==null?'—':Number(pair.makerQuoteSum).toFixed(4));
+    set('matchedSets',fmt(paper.matchedSets||0,2));
+    set('lockedPairPnl',(lockedPnl>=0?'+USD ':'-USD ')+Math.abs(lockedPnl).toFixed(4),lockedPnl>=0?'good':'bad');
+    set('avgPairCost',num(paper.avgMatchedSetCost)==null?'—':Number(paper.avgMatchedSetCost).toFixed(4));
+    set('residualState',residual,paper.position?'warn':'good');
+    set('pairState',pair.directEligible?'LOCKABLE NOW':(pair.hedge&&pair.hedge.eligible?'HEDGE READY':'SCANNING'),(pair.directEligible||(pair.hedge&&pair.hedge.eligible))?'good':'warn');
+    set('orbPairCost',pairCost==null?'—':pairCost.toFixed(4));
+    set('orbMatched',fmt(paper.matchedSets||0,2));
+    set('orbResidual',residual,paper.position?'warn':'good');
+
     set('spotPrice',num(j.spot)==null?'$—':'$'+fmt(j.spot,2));
     set('twapPrice',num(j.twap)==null?'$—':'$'+fmt(j.twap,2));
     set('openRef',num(j.openRef)==null?'WAIT NEXT OPEN':'$'+fmt(j.openRef,2));
@@ -95,9 +112,9 @@
     set('rtdsGate',j.feed?.rtds==='live'?'LIVE':String(j.feed?.rtds||'WARMING').toUpperCase(),j.feed?.rtds==='live'?'good':'warn');
 
     if(!state.history.length&&Array.isArray(j.history)&&j.history.length){
-      state.history=j.history.map(x=>({t:Number(x.t)*1000,spot:num(x.spot),twap:num(x.twap),open:num(x.open),fairUp:num(x.fairUp),upAsk:num(x.upAsk),equity:num(x.equity)})).filter(x=>x.spot);
+      state.history=j.history.map(x=>({t:Number(x.t)*1000,spot:num(x.spot),twap:num(x.twap),open:num(x.open),fairUp:num(x.fairUp),upAsk:num(x.upAsk),downAsk:num(x.downAsk),equity:num(x.equity)})).filter(x=>x.spot);
     }
-    const h={t:now*1000,spot:num(j.spot),twap:num(j.twap),open:num(j.openRef),fairUp:num(model.fairUp),upAsk:num(up.ask),equity:num(paper.equity)};
+    const h={t:now*1000,spot:num(j.spot),twap:num(j.twap),open:num(j.openRef),fairUp:num(model.fairUp),upAsk:num(up.ask),downAsk:num(down.ask),pairCost:num(pair.takerPairCost),pairEdge:num(pair.lockedEdgePerShare),equity:num(paper.equity)};
     if(h.spot&&(!state.history.length||h.t-state.history[state.history.length-1].t>=450))state.history.push(h);
     state.history=state.history.filter(x=>x.t>Date.now()-180000).slice(-360);
 
