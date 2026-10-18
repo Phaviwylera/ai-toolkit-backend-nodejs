@@ -26,29 +26,23 @@
     state.latestMode=j.mode||'WAIT';state.clob.readyState=j.feed?.clob==='live'?1:0;state.rtds.readyState=j.feed?.rtds==='live'?1:0;
   }
 
-  function renderDesk(desk){
-    if(!desk)return;
-    const agents=['ATLAS','VEGA','ORION','LUNA','TITAN','NOVA'];
-    const idMap={ATLAS:'atlas',VEGA:'vega',ORION:'orion',LUNA:'luna',TITAN:'titan',NOVA:'nova'};
-    for(const name of agents){
-      const a=desk[name]||{},id=idMap[name],v=String(a.verdict||'WAIT');
-      const cls=(/TRADE|APPROVE|CONFIRM|WATCH/.test(v)?'good':/REJECT|VETO|FAIL/.test(v)?'bad':'warn');
-      set(id+'Verdict',v,cls);
-      set(id+'Summary',a.summary||'No evidence yet.');
+  function renderCore(core){
+    if(!core){
+      set('vegaVerdict','WARMING','warn');set('vegaSummary','Waiting for BTC/TWAP direction and impulse.');
+      set('titanVerdict','WAIT','warn');set('titanSummary','Waiting for executable signal and hard risk checks.');
+      set('coreFinal','WAIT','warn');return;
     }
-    const sp=desk.sourcePack||{};
-    const parts=[
-      sp.paperOnly?'PAPER ONLY':null,
-      sp.market?'LIVE MARKET':null,
-      'NEWS '+String(sp.verifiedNewsCount||0),
-      sp.sentimentDatasetConnected?'SENTIMENT CONNECTED':'NO SENTIMENT SOURCE'
-    ].filter(Boolean);
-    set('sourcePackState',parts.join(' · '),sp.paperOnly?'good':'warn');
+    const v=core.VEGA||{},t=core.TITAN||{},fv=String(v.verdict||'WAIT'),ft=String(t.verdict||'WAIT');
+    set('vegaVerdict',fv,/CONFIRM/.test(fv)?'good':'warn');
+    set('vegaSummary',v.summary||'Waiting for lag signal.');
+    set('titanVerdict',ft,/APPROVE/.test(ft)?'good':/REJECT/.test(ft)?'bad':'warn');
+    set('titanSummary',t.summary||'Waiting for risk checks.');
+    set('coreFinal',String(core.final||ft),/APPROVE/.test(core.final||ft)?'good':/REJECT/.test(core.final||ft)?'bad':'warn');
   }
 
   function render(j){
     syncPublicState(j);
-    renderDesk(j.desk);
+    renderCore(j.core);
     window.dispatchEvent(new CustomEvent('poly-edge-server-snapshot',{detail:j}));
     const m=j.market||{},b=j.bbo||{},model=j.model||{},c=j.candidate||{},paper=j.paper||{};
     const now=Number(j.serverTime)||Date.now()/1000,left=Math.max(0,(Number(m.endTs)||now)-now);
