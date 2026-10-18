@@ -9,6 +9,7 @@ import os
 import re
 import time
 import asyncio
+import json
 from collections import defaultdict, deque
 from pathlib import Path
 import httpx
@@ -33,6 +34,9 @@ market_live_status='warming-up'
 market_seq=0
 jito_selftest='pending'
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
+POLY_GAMMA='https://gamma-api.polymarket.com'
+POLY_CLOB='https://clob.polymarket.com'
+BINANCE_REST='https://api.binance.com'
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -58,6 +62,16 @@ async def market_js():return FileResponse(ROOT/'market.js',media_type='text/java
 
 @app.get('/style.css')
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
+
+@app.get('/poly')
+async def poly_home():return FileResponse(ROOT/'poly.html',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+@app.get('/poly.js')
+async def poly_js():return FileResponse(ROOT/'poly.js',media_type='text/javascript',headers={'Cache-Control':'no-store'})
+
+@app.get('/poly.css')
+async def poly_css():return FileResponse(ROOT/'poly.css',media_type='text/css',headers={'Cache-Control':'no-store'})
+
 
 @app.get('/health')
 async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'atomic_bundle_execution':True}
@@ -143,6 +157,100 @@ async def verify_jupiter_provider():
         else:
             market_scan_selftest=f'error:{code}'
             print(f'MARKET_SCAN_SELFTEST_FAILED {code}', flush=True)
+
+
+def _poly_jsonish(value):
+    if isinstance(value,list): return value
+    if not isinstance(value,str): return []
+    try:
+        parsed=json.loads(value)
+        return parsed if isinstance(parsed,list) else []
+    except Exception:
+        return []
+
+def _poly_best(book,side):
+    rows=book.get(side) or []
+    vals=[]
+    for row in rows:
+        try:
+            vals.append((float(row.get('price')),float(row.get('size') or 0)))
+        except Exception:
+            pass
+    if not vals:return {'price':None,'size':0}
+    price=max(x[0] for x in vals) if side=='bids' else min(x[0] for x in vals)
+    size=sum(x[1] for x in vals if x[0]==price)
+    return {'price':round(price,6),'size':round(size,4)}
+
+@app.get('/api/poly/current')
+async def poly_current():
+    now=int(time.time())
+    bucket=(now//300)*300
+    candidates=[bucket,bucket+300,bucket-300]
+    selected=None
+    for ts in candidates:
+        slug=f'btc-updown-5m-{ts}'
+        try:
+            data=await external_call('GET',POLY_GAMMA+'/markets',params={'slug':slug})
+        except Exception:
+            continue
+        if not isinstance(data,list) or not data: continue
+        m=data[0]
+        if not isinstance(m,dict): continue
+        if ts==bucket or (m.get('active') and not m.get('closed')):
+            selected=(ts,m)
+            if ts==bucket: break
+    if not selected:
+        raise HTTPException(404,'Current BTC 5-minute Polymarket market not found')
+    start_ts,m=selected
+    outcomes=_poly_jsonish(m.get('outcomes'))
+    token_ids=_poly_jsonish(m.get('clobTokenIds'))
+    if len(outcomes)!=len(token_ids) or len(token_ids)<2:
+        raise HTTPException(502,'Polymarket market token mapping unavailable')
+    mapping={str(o).strip().lower():str(t) for o,t in zip(outcomes,token_ids)}
+    up=mapping.get('up') or mapping.get('yes')
+    down=mapping.get('down') or mapping.get('no')
+    if not up or not down:
+        raise HTTPException(502,'Unable to map Up/Down Polymarket tokens')
+    try:
+        up_book,down_book=await asyncio.gather(
+            external_call('GET',POLY_CLOB+'/book',params={'token_id':up}),
+            external_call('GET',POLY_CLOB+'/book',params={'token_id':down})
+        )
+    except Exception:
+        up_book={};down_book={}
+    return {
+        'status':'ok','slug':m.get('slug') or f'btc-updown-5m-{start_ts}',
+        'question':m.get('question'),'conditionId':m.get('conditionId'),
+        'startTs':start_ts,'endTs':start_ts+300,
+        'active':bool(m.get('active')),'closed':bool(m.get('closed')),
+        'acceptingOrders':bool(m.get('acceptingOrders')),
+        'volume':float(m.get('volumeNum') or m.get('volume') or 0),
+        'liquidity':float(m.get('liquidityNum') or m.get('liquidity') or 0),
+        'minOrderSize':float(m.get('orderMinSize') or 0),
+        'minTickSize':float(m.get('orderPriceMinTickSize') or 0.01),
+        'upToken':up,'downToken':down,
+        'up':{'bid':_poly_best(up_book,'bids'),'ask':_poly_best(up_book,'asks')},
+        'down':{'bid':_poly_best(down_book,'bids'),'ask':_poly_best(down_book,'asks')},
+        'resolutionSource':'Chainlink BTC/USD 60s TWAP'
+    }
+
+@app.get('/api/poly/btc-history')
+async def poly_btc_history():
+    data=await external_call('GET',BINANCE_REST+'/api/v3/klines',params={'symbol':'BTCUSDT','interval':'1m','limit':'120'})
+    if not isinstance(data,list):
+        raise HTTPException(502,'BTC history unavailable')
+    out=[]
+    for row in data[-120:]:
+        try:
+            out.append({'t':int(row[0]),'o':float(row[1]),'h':float(row[2]),'l':float(row[3]),'c':float(row[4]),'v':float(row[5])})
+        except Exception:
+            pass
+    closes=[x['c'] for x in out]
+    rets=[]
+    for a,b in zip(closes,closes[1:]):
+        if a>0 and b>0: rets.append((b/a)-1)
+    vol=(sum(r*r for r in rets)/len(rets))**0.5 if rets else 0
+    return {'status':'ok','candles':out,'oneMinuteRmsPct':round(vol*100,5)}
 
 class Order(BaseModel):
     inputMint:str
