@@ -30,9 +30,9 @@
       decision:j?.decision||null,mode:j?.mode||null,core:j?.core||null,pair:j?.pair||null,reasonCounts:j?.reasonCounts||{},
       paper:{
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
-        startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),roiPct:n(p.roiPct),
+        startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),totalPnl:n(p.totalPnl),unrealizedPnl:n(p.unrealizedPnl),roiPct:n(p.roiPct),
         fees:n(p.fees),trades:n(p.trades),wins:n(p.wins),losses:n(p.losses),winRatePct:n(p.winRatePct),
-        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),pairAttempts:n(p.pairAttempts),matchedSets:n(p.matchedSets),lockedPairPnl:n(p.lockedPairPnl),avgMatchedSetCost:n(p.avgMatchedSetCost),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
+        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),pairAttempts:n(p.pairAttempts),makerQuotes:n(p.makerQuotes),makerFills:n(p.makerFills),makerHedgeFills:n(p.makerHedgeFills),makerMerges:n(p.makerMerges),makerResidualExits:n(p.makerResidualExits),makerResidualSettles:n(p.makerResidualSettles),matchedSets:n(p.matchedSets),lockedPairPnl:n(p.lockedPairPnl),avgMatchedSetCost:n(p.avgMatchedSetCost),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
         position:p.position||null,eventCount:Array.isArray(p.events)?p.events.length:0,
         recentEvents:Array.isArray(p.events)?p.events.slice(0,8):[]
       }
