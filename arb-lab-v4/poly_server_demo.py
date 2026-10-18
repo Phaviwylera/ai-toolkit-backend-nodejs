@@ -32,8 +32,8 @@ MAKER_PAIR_MAX_SUM=0.99
 MAKER_PAIR_TARGET_SUM=0.985
 MAKER_SINGLE_LEG_MAX=3.25
 MAKER_QUOTE_MIN_REST_SEC=0.45
-MAKER_QUEUE_FRACTION=0.20
-MAKER_QUEUE_CAP_SHARES=20.0
+MAKER_RESIDUAL_MAX_SEC=18.0
+MAKER_TAKER_HEDGE_MAX_COST=0.9975
 
 def _jsonish(v):
     if isinstance(v,list): return v
@@ -59,6 +59,10 @@ def _cdf(x):
 
 def _fee_per_share(price):
     return round(0.07*price*(1-price),5)
+
+def _floor_tick(price,tick):
+    tick=max(0.001,float(tick or 0.01))
+    return round(math.floor((float(price)+1e-12)/tick)*tick,6)
 
 class PolyServerDemo:
     def __init__(self):
@@ -117,7 +121,7 @@ class PolyServerDemo:
             data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
             p=data.get('paper')
             now=time.time()
-            if not isinstance(p,dict) or int(p.get('version') or 0)!=8 or float(p.get('endsAt') or 0)<=now:
+            if not isinstance(p,dict) or int(p.get('version') or 0)!=9 or float(p.get('endsAt') or 0)<=now:
                 return False
             # Strip calculated presentation fields before resuming mutable state.
             p=dict(p)
@@ -152,7 +156,7 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':8,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':9,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
@@ -592,18 +596,21 @@ class PolyServerDemo:
         p=self.paper
         if not p or not cand:return
         shares=float(cand['shares']);now=time.time()
+        tick=max(.001,float(self.market.get('minTickSize') or .01))
+        uq=_floor_tick(cand['upQuote'],tick);dq=_floor_tick(cand['downQuote'],tick)
         up_ahead=float(self.bbo['up'].get('bidSize') or 0)
         dn_ahead=float(self.bbo['down'].get('bidSize') or 0)
         p['maker']={
             'marketSlug':self.market.get('slug'),'createdAt':now,'shares':shares,
-            'upQuote':float(cand['upQuote']),'downQuote':float(cand['downQuote']),
-            'upQueueNeed':shares+min(MAKER_QUEUE_CAP_SHARES,max(0.0,up_ahead*MAKER_QUEUE_FRACTION)),
-            'downQueueNeed':shares+min(MAKER_QUEUE_CAP_SHARES,max(0.0,dn_ahead*MAKER_QUEUE_FRACTION)),
-            'upSeen':0.0,'downSeen':0.0,'upFilledPrice':None,'downFilledPrice':None,
+            'upQuote':uq,'downQuote':dq,
+            'upQueueNeed':shares+max(0.0,up_ahead),
+            'downQueueNeed':shares+max(0.0,dn_ahead),
+            'upSeen':0.0,'downSeen':0.0,'upTradeThrough':False,'downTradeThrough':False,
+            'upFilledPrice':None,'downFilledPrice':None,'firstFillAt':None,
             'upCost':0.0,'downCost':0.0,'lastTradeSeq':self.trade_seq,'status':'QUOTING'
         }
         p['makerQuotes']=int(p.get('makerQuotes') or 0)+1
-        self._record('MAKER_QUOTE',detail=f"5sh UP {cand['upQuote']:.3f} + DOWN {cand['downQuote']:.3f} = {cand['sum']:.3f}; real prints required for fill")
+        self._record('MAKER_QUOTE',detail=f"{shares:.2f}sh UP {uq:.3f} + DOWN {dq:.3f} = {uq+dq:.3f}; full displayed queue + real prints required")
 
     def _maker_cancel(self,reason):
         p=self.paper
@@ -622,21 +629,101 @@ class PolyServerDemo:
         if cost>float(p.get('cash') or 0)+1e-9:return False
         p['cash']-=cost;p['makerFills']=int(p.get('makerFills') or 0)+1
         mk[key+'FilledPrice']=quote;mk[key+'Cost']=cost;mk['status']='RESIDUAL'
-        self._record('MAKER_FILL',side=side.upper(),price=quote,detail=f"{shares:.2f} shares maker fill after public trade-through; no maker fee")
+        if not mk.get('firstFillAt'):mk['firstFillAt']=time.time()
+        self._record('MAKER_FILL',side=side.upper(),price=quote,detail=f"{shares:.2f} shares maker fill after conservative queue/trade-through test; no maker fee")
         other='down' if side=='up' else 'up'
         if mk.get(other+'FilledPrice') is None:
             best=self.bbo[other].get('bid')
             if best is not None:
-                max_other=MAKER_PAIR_TARGET_SUM-quote
-                newq=min(float(best),max_other)
+                tick=max(.001,float(self.market.get('minTickSize') or .01))
+                max_other=_floor_tick(MAKER_PAIR_TARGET_SUM-quote,tick)
+                bestq=_floor_tick(float(best),tick)
+                newq=min(bestq,max_other)
                 if newq>=.03 and newq<1 and shares*newq<=MAKER_SINGLE_LEG_MAX+1e-9:
                     mk[other+'Quote']=newq
-                    ahead=float(self.bbo[other].get('bidSize') or 0) if abs(float(best)-newq)<1e-9 else 0.0
-                    mk[other+'QueueNeed']=shares+min(MAKER_QUEUE_CAP_SHARES,max(0.0,ahead*MAKER_QUEUE_FRACTION))
-                    mk[other+'Seen']=0.0
+                    # If we reprice below current best we do not know queue depth at
+                    # that level; require an actual trade-through instead of inventing queue.
+                    at_best=abs(bestq-newq)<=tick/2
+                    ahead=float(self.bbo[other].get('bidSize') or 0) if at_best else 1e12
+                    mk[other+'QueueNeed']=shares+max(0.0,ahead)
+                    mk[other+'Seen']=0.0;mk[other+'TradeThrough']=False
                     mk['lastTradeSeq']=self.trade_seq
-                    self._record('MAKER_REQUOTE',side=other.upper(),price=newq,detail=f"opposite leg repriced to keep complete-set target <= {MAKER_PAIR_TARGET_SUM:.3f}")
+                    self._record('MAKER_REQUOTE',side=other.upper(),price=newq,detail=f"tick-valid opposite quote; complete-set target <= {MAKER_PAIR_TARGET_SUM:.3f}")
         return True
+
+    async def _maker_taker_hedge(self,mk,filled_side):
+        if self.pending or not self.paper:return False
+        p=self.paper;other='down' if filled_side=='up' else 'up'
+        if mk.get(other+'FilledPrice') is not None:return False
+        ask0=self.bbo[other].get('ask');avail0=float(self.bbo[other].get('askSize') or 0)
+        if ask0 is None:return False
+        ask0=float(ask0);shares=float(mk['shares']);entry=float(mk[filled_side+'FilledPrice'])
+        allin=entry+ask0+_fee_per_share(ask0)
+        if allin>MAKER_TAKER_HEDGE_MAX_COST+1e-9 or avail0<shares:return False
+        self.pending=True
+        self._record('MAKER_HEDGE_ORDER',side=other.upper(),price=ask0,detail=f"marketable hedge {shares:.2f}sh; projected complete-set all-in {allin:.4f}")
+        await asyncio.sleep(EXECUTION_LATENCY_SEC)
+        try:
+            ask=self.bbo[other].get('ask');avail=float(self.bbo[other].get('askSize') or 0)
+            if ask is None:return False
+            ask=float(ask);fee=_fee_per_share(ask);fresh_allin=entry+ask+fee
+            total=shares*(ask+fee)
+            if fresh_allin>MAKER_TAKER_HEDGE_MAX_COST+1e-9 or avail<shares or total>float(p.get('cash') or 0)+1e-9:
+                self._record('MAKER_HEDGE_NOFILL',side=other.upper(),price=ask,detail=f"post-latency all-in {fresh_allin:.4f}; avail {avail:.2f}")
+                return False
+            p['cash']-=total;p['fees']+=shares*fee
+            p['makerHedgeFills']=int(p.get('makerHedgeFills') or 0)+1
+            mk[other+'FilledPrice']=ask;mk[other+'Cost']=total;mk['status']='HEDGED'
+            self._record('MAKER_HEDGE_FILL',side=other.upper(),price=ask,detail=f"{shares:.2f}sh taker hedge; complete-set all-in {fresh_allin:.4f}")
+            return True
+        finally:
+            self.pending=False
+
+    async def _maker_residual_exit(self,mk,filled_side,reason):
+        if self.pending or not self.paper:return False
+        p=self.paper;bid0=self.bbo[filled_side].get('bid')
+        if bid0 is None:return False
+        shares=float(mk['shares']);self.pending=True
+        self._record('MAKER_EXIT_ORDER',side=filled_side.upper(),price=float(bid0),detail=reason)
+        await asyncio.sleep(EXECUTION_LATENCY_SEC)
+        try:
+            bid=self.bbo[filled_side].get('bid');avail=float(self.bbo[filled_side].get('bidSize') or 0)
+            if bid is None or (avail>0 and avail<shares):
+                self._record('MAKER_EXIT_NOFILL',side=filled_side.upper(),detail='post-latency residual exit unavailable')
+                return False
+            bid=float(bid);fee=shares*_fee_per_share(bid);net=shares*bid-fee
+            cost=float(mk.get(filled_side+'Cost') or 0);pnl=net-cost
+            p['cash']+=net;p['fees']+=fee;p['realizedPnl']+=pnl;p['trades']+=1
+            if pnl>=0:p['wins']+=1;p['consecutiveLosses']=0
+            else:p['losses']+=1;p['consecutiveLosses']=int(p.get('consecutiveLosses') or 0)+1
+            p['makerResidualExits']=int(p.get('makerResidualExits') or 0)+1
+            self._record('MAKER_RESIDUAL_EXIT',side=filled_side.upper(),price=bid,pnl=pnl,detail=reason+f'; exit fee USD {fee:.5f}')
+            p['maker']=None
+            if p['realizedPnl']<=-SESSION_LOSS_LIMIT_USD or int(p.get('consecutiveLosses') or 0)>=2:
+                p['status']='risk_locked';p['riskLockReason']='maker residual risk lock'
+            return True
+        finally:
+            self.pending=False
+
+    async def _manage_maker_residual(self,mk):
+        up=mk.get('upFilledPrice');dn=mk.get('downFilledPrice')
+        if (up is None)==(dn is None):return
+        side='up' if up is not None else 'down'
+        if await self._maker_taker_hedge(mk,side):
+            return
+        bid=self.bbo[side].get('bid')
+        if bid is None:return
+        shares=float(mk['shares']);bid=float(bid)
+        net=shares*bid-shares*_fee_per_share(bid)
+        cost=float(mk.get(side+'Cost') or 0);pnl=net-cost
+        age=max(0.0,time.time()-float(mk.get('firstFillAt') or time.time()))
+        remaining=float(self.market.get('endTs') or 0)-time.time()
+        if pnl<=-MAX_TRADE_LOSS_USD:
+            await self._maker_residual_exit(mk,side,'maker residual hard risk stop')
+        elif age>=MAKER_RESIDUAL_MAX_SEC:
+            await self._maker_residual_exit(mk,side,'maker residual time stop')
+        elif remaining<=15:
+            await self._maker_residual_exit(mk,side,'maker residual close protection')
 
     async def _maker_step(self):
         p=self.paper
@@ -654,18 +741,26 @@ class PolyServerDemo:
         last=int(mk.get('lastTradeSeq') or 0)
         newprints=[q for q in self.trade_prints if int(q.get('seq') or 0)>last]
         if newprints:mk['lastTradeSeq']=max(int(q['seq']) for q in newprints)
+        tick=max(.001,float(self.market.get('minTickSize') or .01))
         for q in newprints:
             side=q.get('side')
             if side not in ('up','down') or mk.get(side+'FilledPrice') is not None:continue
-            quote=float(mk.get(side+'Quote') or 0)
-            if float(q.get('price') or 99)<=quote+1e-9:
+            quote=float(mk.get(side+'Quote') or 0);qp=float(q.get('price') or 99)
+            if qp<quote-tick/2:
+                # A public print strictly through our resting bid means all better
+                # bids and our price level were crossed: count as filled.
+                mk[side+'TradeThrough']=True
+                mk[side+'Seen']=max(float(mk.get(side+'Seen') or 0),float(mk.get(side+'QueueNeed') or 0))
+            elif abs(qp-quote)<=tick/2:
                 mk[side+'Seen']=float(mk.get(side+'Seen') or 0)+max(0.0,float(q.get('size') or 0))
 
         for side in ('up','down'):
-            if mk.get(side+'FilledPrice') is None and float(mk.get(side+'Seen') or 0)>=float(mk.get(side+'QueueNeed') or 1e9):
+            if mk.get(side+'FilledPrice') is None and float(mk.get(side+'Seen') or 0)>=float(mk.get(side+'QueueNeed') or 1e18):
                 self._maker_fill_side(mk,side)
 
-        up=mk.get('upFilledPrice');dn=mk.get('downFilledPrice')
+        await self._manage_maker_residual(mk)
+        if p.get('maker') is None:return
+        mk=p['maker'];up=mk.get('upFilledPrice');dn=mk.get('downFilledPrice')
         if up is not None and dn is not None:
             shares=float(mk['shares']);cost=float(mk['upCost'])+float(mk['downCost'])
             pair_cost=cost/shares;payout=shares;pnl=payout-cost
@@ -806,7 +901,25 @@ class PolyServerDemo:
         if pos:
             key='up' if pos['side']=='UP' else 'down'
             bid=self.bbo[key].get('bid')
-            e+=pos['shares']*(float(bid) if bid is not None else pos['entryPrice'])
+            if bid is not None:
+                bid=float(bid);shares=float(pos['shares'])
+                e+=max(0.0,shares*bid-shares*_fee_per_share(bid))
+            else:
+                e+=float(pos.get('entryTotalCost') or 0)
+
+        # A one-sided maker fill is real inventory, not vanished cash. Mark it at
+        # executable bid less estimated taker exit fee so equity/drawdown are honest.
+        mk=p.get('maker')
+        if mk:
+            shares=float(mk.get('shares') or 0)
+            for side in ('up','down'):
+                if mk.get(side+'FilledPrice') is None:continue
+                bid=self.bbo[side].get('bid')
+                if bid is not None:
+                    bid=float(bid)
+                    e+=max(0.0,shares*bid-shares*_fee_per_share(bid))
+                else:
+                    e+=float(mk.get(side+'Cost') or 0)
         return e
 
     def _record(self,action,**kw):
@@ -1052,7 +1165,10 @@ class PolyServerDemo:
                     'executionLatencyMs':int(EXECUTION_LATENCY_SEC*1000),'maxEntryChase':MAX_ENTRY_CHASE},
             'history':list(self.visual_history)[-240:],
             'reasonCounts':dict(self.reason_counts),
-            'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
+            'paper':{**p,'equity':eq,
+                     'totalPnl':(eq-float(p.get('startingBalance',20))) if p else 0,
+                     'unrealizedPnl':((eq-float(p.get('startingBalance',20)))-float(p.get('realizedPnl') or 0)) if p else 0,
+                     'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
                      'avgMatchedSetCost':(p.get('pairCostSum',0)/p.get('pairSharesSum',1) if p.get('pairSharesSum',0) else None),
                      'winRatePct':(p.get('wins',0)/p.get('trades',1)*100 if p.get('trades',0) else 0)}
         }
