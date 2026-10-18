@@ -49,7 +49,7 @@
 
   function render(j){
     last=j;
-    const p=j.paper||{},eq=Number(p.equity)||0,start=Number(p.startingBalance)||2,real=Number(p.realizedPnl)||0;
+    const p=j.paper||{},eq=Number(p.equity)||0,start=Number(p.startingBalance)||20,real=Number(p.realizedPnl)||0;
     set('demoEquity','$'+eq.toFixed(4),eq>=start?'good':'bad');
     set('demoPnl',money(real,4),real>=0?'good':'bad');
     set('demoTrades',String(p.trades||0));
