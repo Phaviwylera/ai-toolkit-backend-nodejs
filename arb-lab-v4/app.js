@@ -150,20 +150,52 @@ async function tradeLeg(from,to,amount,label){if(!wallet)throw Error('Signing ke
 async function attempt(c){if(!active||inflight||!wallet)return;loadAttempts();if(attemptToday>=MAX_ATTEMPTS){disarm('Daily attempt limit reached');return}const prev=await balances();if(prev.usdc>1000){disarm('Wallet already contains USDC; reconcile balances before a new cycle');return}if(prev.sol-c.spend<RESERVE){disarm('Fee reserve would be violated');return}markAttempt();inflight=true;renderMode();log('system','Beginning REAL non-atomic round trip. Separate swaps can lose money.');try{await tradeLeg(SOL,USDC,c.spend,'Leg 1 SOL → USDC');let changed=0;for(let i=0;i<10;i++){const bal=await balances();changed=bal.usdc-prev.usdc;if(changed>0)break;await new Promise(r=>setTimeout(r,1600))}if(changed<=0)throw Error('First leg confirmed but USDC not yet visible; stop; manual reconciliation required');if(changed>1_000_000)throw Error('USDC exceeds strict $1 trade cap; stop');await tradeLeg(USDC,SOL,changed,'Leg 2 USDC → SOL');const after=await balances();stats=after;const delta=after.sol-prev.sol;log(delta>0?'success':'error','Realized wallet SOL change '+fmt(delta/1e9,9)+' SOL (includes network fees, ATA rent and other account effects).');if(delta<=0)disarm('Loss or no net improvement after completed cycle');else toast('Round trip completed. Verify both transactions on Solscan; P&L can include account rent.');await refresh()}catch(e){log('error','Trading halted: '+e.message+' Funds may remain as USDC. Verify your bot wallet on Solscan.');disarm('Error / uncertain state');toast('TRADING HALTED: '+e.message,true)}finally{inflight=false;renderMode()}}
 async function cycle(){if(!active||inflight)return;loadAttempts();if(attemptToday>=MAX_ATTEMPTS){disarm('Daily trade limit reached');return}const c=await scan(false);if(!c){disarm('Unable to verify profitable quote; fail-closed');return}if(!c.eligible)return;const repeated=await scan(false);if(!repeated||!repeated.eligible){log('scan','Price moved or second quote unavailable — trade rejected');return}if(Math.abs(repeated.spend-c.spend)>1000){log('scan','Quote size drifted; skip cycle');return}await attempt(repeated)}
 function disarm(reason='Manually stopped'){active=false;clearInterval(loop);loop=null;log('system','Auto trading disabled: '+reason+'. Pending transaction may still settle.');renderMode()}
-async function arm(){try{if(!wallet)throw Error('Unlock your encrypted bot wallet first.');if(active||inflight)throw Error('A transaction is already underway');loadAttempts();if(attemptToday>=MAX_ATTEMPTS)throw Error('Daily attempt cap already reached.');const bl=await balances();if(bl.sol<=RESERVE+180000)throw Error('Insufficient SOL for a $2-sized wallet after reserve. Do not fund more unless you can afford to lose it.');if(bl.usdc>0)throw Error('Wallet contains USDC already. Recover or swap it before automatic cycling.');if(!confirm('REAL MONEY: Once armed, two SEPARATE swaps may be executed without further confirmation. You can lose your entire dedicated bot balance. This is experimental, not audited and NOT profit-guaranteed. Continue?'))return;const typed=prompt('To arm live trading, type exactly: I ACCEPT NON-ATOMIC RISK');if(typed!=='I ACCEPT NON-ATOMIC RISK')throw Error('Live trading was not authorized.');active=true;log('system','User enabled LIVE automatic trading. Requires this tab open and wallet unlocked.');renderMode();await cycle();if(active)loop=setInterval(()=>{cycle().catch(e=>{log('error',e.message);disarm('Cycle crashed')})},60000)}catch(e){toast(e.message,true)}}
+async function arm(){
+  try{
+    if(!wallet)throw Error('Unlock your encrypted bot wallet first.');
+    if(active||inflight)throw Error('A transaction is already underway');
+    loadAttempts();
+    if(attemptToday>=MAX_ATTEMPTS)throw Error('Daily attempt cap already reached.');
+    const bl=await balances();
+    if(bl.sol<=RESERVE+180000)throw Error('Insufficient SOL after reserve. Scanner will keep running, but no real trade can execute.');
+    if(bl.usdc>0)throw Error('Wallet contains USDC already. Recover or swap it before automatic cycling.');
+    if(!confirm('REAL MONEY: Once armed, qualifying opportunities can trigger two SEPARATE swaps without further confirmation. You can lose the dedicated bot balance. Continue?'))return;
+    const typed=prompt('To arm live trading, type exactly: I ACCEPT NON-ATOMIC RISK');
+    if(typed!=='I ACCEPT NON-ATOMIC RISK')throw Error('Live trading was not authorized.');
+    active=true;
+    log('system','LIVE AUTO armed. Execution is opportunity-triggered; market scanning itself is continuous and independent.');
+    renderMode();
+    await cycle();
+  }catch(e){toast(e.message,true)}
+}
 async function withdraw(){try{if(active||inflight)throw Error('Stop automatic trading and let pending transactions settle first.');if(!wallet)throw Error('Unlock the bot wallet first.');if($('withdrawWord').value.trim()!=='WITHDRAW')throw Error('Type WITHDRAW to approve the transfer');const address=$('withdrawDest').value.trim();const s=sdk();const pub=new s.PublicKey(address);if(pub.toBase58()===wallet.publicKey.toBase58())throw Error('Destination cannot be the same bot wallet');if(!s.PublicKey.isOnCurve(pub.toBytes()))throw Error('Use a normal Phantom wallet address (not a program account)');const amount=Number($('withdrawAmount').value);const raw=Math.floor(amount*1e9);if(!Number.isSafeInteger(raw)||raw<10000)throw Error('Enter a valid SOL amount of at least 0.00001 SOL');const available=await balances();if(raw+15000>=available.sol)throw Error('Balance insufficient after preserving 0.000015 SOL for network fees');if(!confirm('Final check: Send '+fmt(raw/1e9,9)+' SOL to '+address+'? This cannot be reversed.'))return;inflight=true;renderMode();const bh=await rpc('getLatestBlockhash',[{commitment:'confirmed'}]);const tx=new s.Transaction({feePayer:wallet.publicKey,recentBlockhash:bh.value.blockhash});tx.add(s.SystemProgram.transfer({fromPubkey:wallet.publicKey,toPubkey:pub,lamports:raw}));tx.sign(wallet);const sig=await rpc('sendTransaction',[b64(tx.serialize()),{encoding:'base64',skipPreflight:false,preflightCommitment:'confirmed'}]);log('sent','Withdrawal sent to your Phantom address; waiting confirmation',String(sig));await waitFinal(String(sig));log('success','WITHDRAWAL CONFIRMED: '+fmt(raw/1e9,9)+' SOL transferred',String(sig));toast('Withdrawal confirmed! Open the Solscan link in activity.');$('withdrawWord').value='';await refresh()}catch(e){log('error','Withdrawal not confirmed: '+e.message);toast('Withdrawal status uncertain: '+e.message,true)}finally{inflight=false;renderMode()}}
 async function recoverUsdc(){try{if(active||inflight)throw Error('Stop the bot and allow pending transactions to settle first');if(!wallet)throw Error('Unlock your encrypted bot wallet first');const b=await balances();if(b.usdc<1000)throw Error('No stranded USDC detected. There is nothing to recover.');if(b.usdc>1_000_000)throw Error('Recovery cap is $1 USDC. Stop and use an audited wallet tool for larger funds.');if(b.sol<300000)throw Error('Insufficient SOL for potential swap network and token-account costs.');if(!confirm('Recover '+fmt(b.usdc/1e6,6)+' USDC back to SOL? This is a NEW real swap and can lose money. Proceed?'))return;inflight=true;renderMode();await tradeLeg(USDC,SOL,b.usdc,'Manual recovery USDC → SOL');await refresh();toast('USDC recovery swap confirmed. Check balance before withdrawing SOL.')}catch(e){log('error','USDC recovery failed or uncertain: '+e.message);toast(e.message,true)}finally{inflight=false;renderMode()}}
 async function phantom(){try{const p=window.phantom?.solana||window.solana;if(!p?.isPhantom)throw Error('Phantom not found. On mobile, open this website inside Phantom’s browser; otherwise paste your public address manually.');const result=await p.connect();phantomAddress=result.publicKey.toString();$('phantomAddr').textContent='Public Phantom address: '+phantomAddress;toast('Phantom public address connected. It is NOT granted spend permissions.')}catch(e){toast(e.message,true)}}
+let opportunityExecutionQueued=false;
+window.addEventListener('arb-lab-opportunity',async (ev)=>{
+  if(!active||!wallet||inflight||opportunityExecutionQueued)return;
+  opportunityExecutionQueued=true;
+  try{
+    log('scan','Server live feed flagged an execution candidate. Running strict funded-wallet re-quote now.');
+    await cycle();
+  }catch(e){
+    log('error','Opportunity-triggered execution check failed: '+e.message);
+    disarm('Execution check failed');
+  }finally{
+    opportunityExecutionQueued=false;
+  }
+});
+
 function wire(){
   renderVault();renderEvents();loadAttempts();renderMarketHistory();
   $('createBtn').onclick=createVault;$('unlockBtn').onclick=unlockVault;$('lockBtn').onclick=lockVault;$('backupBtn').onclick=()=>{try{saveBackup()}catch(e){toast(e.message,true)}};$('importFile').onchange=importVault;
   $('copyBtn').onclick=async()=>{if(!vault)return;try{await navigator.clipboard.writeText(vault.address);toast('Bot deposit address copied. Verify before sending funds.')}catch{toast('Clipboard unavailable. Select and copy the displayed public address.',true)}};
-  $('phantomBtn').onclick=phantom;$('refreshBtn').onclick=refresh;$('scanBtn').onclick=()=>marketScan(true);$('startBtn').onclick=arm;$('stopBtn').onclick=()=>disarm('User pressed Stop');
+  $('phantomBtn').onclick=phantom;$('refreshBtn').onclick=refresh;$('scanBtn').onclick=()=>{if(wallet)scan(true);else toast('Live market scanning is already continuous. Create/unlock/fund the bot wallet only when you want real execution.',false)};$('startBtn').onclick=arm;$('stopBtn').onclick=()=>disarm('User pressed Stop');
   $('usePhantom').onclick=()=>{if(!phantomAddress)return toast('Connect Phantom first, or paste its public receiving address.',true);$('withdrawDest').value=phantomAddress};
   $('withdrawBtn').onclick=withdraw;$('recoverUsdc').onclick=recoverUsdc;
   $('clearHistory').onclick=()=>{if(confirm('Clear only this browser’s execution log? Blockchain records remain unchanged.')){events=[];localStorage.removeItem(EVENT_STORAGE);renderEvents()}};
   window.addEventListener('resize',drawPnlChart);
   window.addEventListener('beforeunload',()=>{active=false;clearInterval(loop);clearInterval(marketLoop);clearInterval(countdownLoop)});
-  setTimeout(refresh,500);startMarketFeed();startFlow()
+  setTimeout(refresh,500)
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
