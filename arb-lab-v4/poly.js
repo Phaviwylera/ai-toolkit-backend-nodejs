@@ -9,7 +9,7 @@
   };
   window.POLY_EDGE_STATE=state;
 
-  const num=v=>Number.isFinite(Number(v))?Number(v):null;
+  const num=v=>{if(v===null||v===undefined||v==='')return null;const x=Number(v);return Number.isFinite(x)?x:null;};
   const fmt=(v,d=2)=>num(v)!==null?Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
   const pct=v=>num(v)!==null?(Number(v)*100).toFixed(1)+'%':'—';
   const bps=v=>num(v)!==null?(Number(v)>=0?'+':'')+Number(v).toFixed(2)+' bps':'—';
@@ -113,25 +113,100 @@
 
   function drawChart(){
     const c=$('chart');if(!c)return;
-    const r=c.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,devicePixelRatio||1)),w=Math.max(320,r.width),h=Math.max(220,r.height||260);
-    c.width=Math.floor(w*dpr);c.height=Math.floor(h*dpr);const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
-    const data=state.history;if(data.length<2){requestAnimationFrame(drawChart);return}
-    const vals=data.flatMap(a=>[a.spot,a.twap,a.open].filter(Number.isFinite)),lo=Math.min(...vals),hi=Math.max(...vals),pad=Math.max(1,(hi-lo)*.18),mn=lo-pad,mx=hi+pad;
-    const t0=data[0].t,t1=data[data.length-1].t||t0+1,px=t=>24+(t-t0)/Math.max(1,t1-t0)*(w-42),py=p=>h-22-(p-mn)/Math.max(1,mx-mn)*(h-44);
-    x.strokeStyle='rgba(255,255,255,.055)';x.lineWidth=1;
-    for(let i=1;i<6;i++){x.beginPath();x.moveTo(22,i*h/6);x.lineTo(w-10,i*h/6);x.stroke()}
-    const draw=(key,color,width,fill)=>{
-      const arr=data.filter(a=>Number.isFinite(a[key]));if(arr.length<2)return;
-      x.beginPath();arr.forEach((a,i)=>{const xx=px(a.t),yy=py(a[key]);i?x.lineTo(xx,yy):x.moveTo(xx,yy)});
-      if(fill){const last=arr[arr.length-1],first=arr[0];x.lineTo(px(last.t),h-22);x.lineTo(px(first.t),h-22);x.closePath();const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,fill);g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fill();x.beginPath();arr.forEach((a,i)=>{i?x.lineTo(px(a.t),py(a[key])):x.moveTo(px(a.t),py(a[key]))})}
-      x.strokeStyle=color;x.lineWidth=width;x.shadowColor=color;x.shadowBlur=8;x.stroke();x.shadowBlur=0;
+    const r=c.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,devicePixelRatio||1));
+    const w=Math.max(320,r.width),h=Math.max(240,r.height||270);
+    c.width=Math.floor(w*dpr);c.height=Math.floor(h*dpr);
+    const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
+
+    const validPrice=v=>Number.isFinite(v)&&v>1000;
+    const data=state.history.filter(a=>validPrice(a.spot)||validPrice(a.twap)).slice(-300);
+    if(data.length<2){requestAnimationFrame(drawChart);return}
+
+    const plotL=52,plotR=w-18,priceTop=16,priceBottom=h*.73,leadTop=h*.79,leadBottom=h-20;
+    const t0=data[0].t,t1=data[data.length-1].t||t0+1;
+    const px=t=>plotL+(t-t0)/Math.max(1,t1-t0)*(plotR-plotL);
+
+    // Scale only from recent BTC spot/TWAP values. Missing/open=0 can never flatten it.
+    const prices=data.flatMap(a=>[a.spot,a.twap].filter(validPrice));
+    let lo=Math.min(...prices),hi=Math.max(...prices);
+    const center=(lo+hi)/2;
+    // Guarantee a useful zoom even during a quiet period.
+    const observed=Math.max(.5,hi-lo);
+    const minVisualSpan=Math.max(6,center*.00006);
+    const span=Math.max(observed*1.45,minVisualSpan);
+    let mn=center-span/2,mx=center+span/2;
+
+    const open=[...data].reverse().map(a=>a.open).find(validPrice);
+    // Include OPEN only when reasonably close. Otherwise keep microstructure zoom intact.
+    if(validPrice(open)){
+      const local=mx-mn,dist=Math.min(Math.abs(open-mn),Math.abs(open-mx));
+      if(open>=mn-local*.6&&open<=mx+local*.6){
+        mn=Math.min(mn,open-local*.08);mx=Math.max(mx,open+local*.08);
+      }
+    }
+    const py=p=>priceBottom-(p-mn)/Math.max(.01,mx-mn)*(priceBottom-priceTop);
+
+    // Price grid and live dollar labels.
+    x.font='9px ui-monospace,SFMono-Regular,Menlo,monospace';
+    x.textAlign='right';x.textBaseline='middle';
+    for(let i=0;i<=4;i++){
+      const yy=priceTop+(priceBottom-priceTop)*i/4;
+      const price=mx-(mx-mn)*i/4;
+      x.strokeStyle='rgba(255,255,255,.055)';x.lineWidth=1;
+      x.beginPath();x.moveTo(plotL,yy);x.lineTo(plotR,yy);x.stroke();
+      x.fillStyle='rgba(130,150,140,.7)';x.fillText('$'+price.toFixed(2),plotL-7,yy);
+    }
+
+    const drawPrice=(key,color,width,fill)=>{
+      const arr=data.filter(a=>validPrice(a[key]));if(arr.length<2)return;
+      const points=arr.map(a=>[px(a.t),py(a[key])]);
+      if(fill){
+        x.beginPath();points.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));
+        x.lineTo(points[points.length-1][0],priceBottom);x.lineTo(points[0][0],priceBottom);x.closePath();
+        const g=x.createLinearGradient(0,priceTop,0,priceBottom);g.addColorStop(0,fill);g.addColorStop(1,'rgba(0,0,0,0)');
+        x.fillStyle=g;x.fill();
+      }
+      x.beginPath();points.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));
+      x.strokeStyle=color;x.lineWidth=width;x.lineJoin='round';x.lineCap='round';x.shadowColor=color;x.shadowBlur=7;x.stroke();x.shadowBlur=0;
     };
-    draw('spot','#6cffa9',1.8,'rgba(108,255,169,.08)');draw('twap','#b36cff',1.4,null);
-    const open=data[data.length-1].open;if(Number.isFinite(open)){x.setLineDash([5,6]);x.strokeStyle='rgba(255,200,87,.7)';x.beginPath();x.moveTo(22,py(open));x.lineTo(w-10,py(open));x.stroke();x.setLineDash([])}
-    const last=data[data.length-1];x.fillStyle='#6cffa9';x.shadowColor='#6cffa9';x.shadowBlur=14;x.beginPath();x.arc(px(last.t),py(last.spot),3.5,0,Math.PI*2);x.fill();x.shadowBlur=0;
+    drawPrice('spot','#6cffa9',2.0,'rgba(108,255,169,.075)');
+    drawPrice('twap','#b36cff',1.55,null);
+
+    // Opening reference never controls the zoom if it is far away.
+    if(validPrice(open)){
+      if(open>=mn&&open<=mx){
+        const oy=py(open);x.setLineDash([5,6]);x.strokeStyle='rgba(255,200,87,.85)';x.lineWidth=1;
+        x.beginPath();x.moveTo(plotL,oy);x.lineTo(plotR,oy);x.stroke();x.setLineDash([]);
+        x.fillStyle='#ffc857';x.textAlign='left';x.fillText('OPEN $'+open.toFixed(2),plotL+6,Math.max(priceTop+8,oy-8));
+      }else{
+        const above=open>mx,yy=above?priceTop+8:priceBottom-8;
+        x.fillStyle='#ffc857';x.textAlign='left';x.fillText((above?'▲ ':'▼ ')+'OPEN $'+open.toFixed(2)+' · OFF RANGE',plotL+6,yy);
+      }
+    }
+
+    // Current live markers + labels.
+    const last=[...data].reverse().find(a=>validPrice(a.spot));
+    if(last&&validPrice(last.spot)){
+      const lx=px(last.t),ly=py(last.spot);
+      x.fillStyle='#6cffa9';x.shadowColor='#6cffa9';x.shadowBlur=14;x.beginPath();x.arc(lx,ly,3.8,0,Math.PI*2);x.fill();x.shadowBlur=0;
+      x.fillStyle='#6cffa9';x.textAlign='right';x.fillText('$'+last.spot.toFixed(2),plotR,Math.max(priceTop+8,ly-10));
+    }
+
+    // Lower strip: SPOT minus TWAP in bps. This exposes the actual lag signal.
+    const lead=data.map(a=>({t:a.t,v:(validPrice(a.spot)&&validPrice(a.twap))?(a.spot/a.twap-1)*10000:null})).filter(a=>Number.isFinite(a.v));
+    x.strokeStyle='rgba(255,255,255,.07)';x.beginPath();x.moveTo(plotL,(leadTop+leadBottom)/2);x.lineTo(plotR,(leadTop+leadBottom)/2);x.stroke();
+    x.fillStyle='rgba(130,150,140,.72)';x.textAlign='left';x.fillText('SPOT−TWAP LEAD (bps)',plotL,leadTop-8);
+    if(lead.length>=2){
+      const abs=Math.max(.12,...lead.map(a=>Math.abs(a.v)))*1.18;
+      const lpy=v=>(leadTop+leadBottom)/2-v/abs*(leadBottom-leadTop)*.44;
+      x.beginPath();lead.forEach((a,i)=>i?x.lineTo(px(a.t),lpy(a.v)):x.moveTo(px(a.t),lpy(a.v)));
+      x.strokeStyle='#63d7ff';x.lineWidth=1.4;x.shadowColor='#63d7ff';x.shadowBlur=6;x.stroke();x.shadowBlur=0;
+      const lv=lead[lead.length-1].v;
+      x.fillStyle=lv>=0?'#6cffa9':'#ff6076';x.textAlign='right';x.fillText((lv>=0?'+':'')+lv.toFixed(3)+' bps',plotR,leadTop-8);
+    }
+
     requestAnimationFrame(drawChart);
   }
-
   function drawOrb(){
     const c=$('orbCanvas');if(!c){requestAnimationFrame(drawOrb);return}
     const r=c.getBoundingClientRect(),dpr=Math.max(1,Math.min(2,devicePixelRatio||1)),w=Math.max(280,r.width),h=Math.max(320,r.height||420);
