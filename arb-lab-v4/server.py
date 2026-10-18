@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import asyncio
 from collections import defaultdict, deque
 from pathlib import Path
 import httpx
@@ -22,6 +23,9 @@ SOL='So11111111111111111111111111111111111111112'
 USDC='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 app=FastAPI(title='ARB/LAB — Unified Solana Terminal',docs_url=None,redoc_url=None)
 requests_by_ip=defaultdict(deque)
+jupiter_order_lock=asyncio.Lock()
+last_jupiter_order=0.0
+jupiter_provider_selftest='pending'
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -43,7 +47,7 @@ async def app_js():return FileResponse(ROOT/'app.js',media_type='text/javascript
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css')
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'atomic_arbitrage':False}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -65,6 +69,37 @@ def jup_key(request:Request):
         raise HTTPException(400,'Set your free Jupiter API key in the dashboard to access mainnet quotes.')
     return {'x-api-key':key,'Accept':'application/json'}
 
+async def jupiter_order(headers, params):
+    global last_jupiter_order
+    async with jupiter_order_lock:
+        delay = 1.05 - (time.monotonic() - last_jupiter_order)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            return await external_call('GET',JUPITER+'/order',headers=headers,params=params)
+        finally:
+            last_jupiter_order=time.monotonic()
+
+@app.on_event('startup')
+async def verify_jupiter_provider():
+    global jupiter_provider_selftest
+    key=os.environ.get('JUPITER_API_KEY')
+    if not key:
+        jupiter_provider_selftest='missing-key'
+        print('JUPITER_SELFTEST_MISSING_KEY', flush=True)
+        return
+    params={'inputMint':SOL,'outputMint':USDC,'amount':'1000000','taker':'BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV'}
+    try:
+        result=await jupiter_order({'x-api-key':key,'Accept':'application/json'},params)
+        if not isinstance(result,dict) or not result.get('outAmount'):
+            raise RuntimeError('unexpected order response')
+        jupiter_provider_selftest='ok'
+        print('JUPITER_SELFTEST_OK', flush=True)
+    except Exception as exc:
+        code=getattr(exc,'status_code',type(exc).__name__)
+        jupiter_provider_selftest=f'error:{code}'
+        print(f'JUPITER_SELFTEST_FAILED {code}', flush=True)
+
 class Order(BaseModel):
     inputMint:str
     outputMint:str
@@ -81,7 +116,7 @@ async def order(input:Order, request:Request):
         raise HTTPException(400,'Invalid Solana public wallet address')
     params={'inputMint':input.inputMint,'outputMint':input.outputMint,'amount':input.amount}
     if input.taker: params['taker']=input.taker
-    return await external_call('GET',JUPITER+'/order',headers=jup_key(request),params=params)
+    return await jupiter_order(jup_key(request),params)
 
 class Execute(BaseModel):
     signedTransaction:str=Field(min_length=80,max_length=16000)
