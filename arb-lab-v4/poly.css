@@ -218,3 +218,10 @@ body{overflow-x:hidden!important}
   .neuralPanel{grid-column:1/-1;height:430px!important}.activityRail{grid-column:1/-1}
   .forensicDeck{grid-column:1/-1}
 }
+
+@media(max-width:900px){
+  .mobileDock a.active{background:rgba(103,243,162,.055);color:var(--green);box-shadow:inset 0 2px 0 rgba(103,243,162,.65)}
+  .mobileDock a.active b{color:var(--green)}
+  .forensicTape,.fullOpportunityTape{overscroll-behavior:contain}
+  .historyPanel{-webkit-overflow-scrolling:touch}
+}
