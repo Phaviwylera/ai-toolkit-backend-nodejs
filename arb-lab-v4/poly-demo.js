@@ -52,8 +52,76 @@
   function render(j){
     last=j;
     const p=j.paper||{},eq=Number(p.equity)||0,start=Number(p.startingBalance)||20,real=Number(p.realizedPnl)||0;
-    set('demoEquity','$'+eq.toFixed(4),eq>=start?'good':'bad');
+    const total=Number.isFinite(Number(p.totalPnl))?Number(p.totalPnl):(eq-start);
+    const unreal=Number.isFinite(Number(p.unrealizedPnl))?Number(p.unrealizedPnl):(total-real);
+    set('demoEquity','
+    set('demoWins',String(p.wins||0));set('demoLosses',String(p.losses||0));
+    set('demoWinRate',p.trades?pct(p.winRatePct||0,1):'—');
+    set('demoFees','$'+Number(p.fees||0).toFixed(4));
+    set('demoDrawdown',pct((Number(p.maxDrawdown)||0)*100,2));
+    set('demoBlocked',String(p.blocked||0));
+    set('demoNoFill',String(p.nofills||0));
+    set('demoAttempts',String(p.executionAttempts||0));
+    set('demoPostRejects',String(p.postLatencyRejects||0));
+    set('pairAttemptsView',String(Number(p.pairAttempts||0)+Number(p.makerQuotes||0)));
+    set('matchedSetsHistory',Number(p.matchedSets||0).toFixed(2));
+    set('lockedPairPnlHistory',money(p.lockedPairPnl||0,4),Number(p.lockedPairPnl||0)>=0?'good':'bad');
+    set('avgPairCostHistory',Number.isFinite(Number(p.avgMatchedSetCost))?Number(p.avgMatchedSetCost).toFixed(4):'—');
+    const left=Math.max(0,Math.floor((Number(p.endsAt)||0)-Number(j.serverTime||Date.now()/1000)));
+    set('demoLeft',String(Math.floor(left/3600)).padStart(2,'0')+':'+String(Math.floor((left%3600)/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0'));
+    const status=p.status==='complete'?'COMPLETE':p.status==='risk_locked'?'RISK LOCKED':'SERVER LIVE PAPER';
+    set('demoStatus',status,p.status==='risk_locked'?'bad':p.status==='complete'?'warn':'good');
+    const riskText=p.status==='risk_locked'?(p.riskLockReason||'LOSS LIMIT'):(Number(p.cooldownUntil||0)>Number(j.serverTime||0)?'COOLDOWN':'ARMED');
+    set('riskState',riskText,p.status==='risk_locked'?'bad':riskText==='COOLDOWN'?'warn':'good');
+
+    if(p.position){
+      const side=p.position.side||'—',key=side==='UP'?'up':'down';
+      const bid=Number(j.bbo?.[key]?.bid);
+      const txt=side+' · '+Number(p.position.shares||0).toFixed(2)+' shares · entry '+(Number(p.position.entryPrice||0)*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—');
+      set('demoPosition',txt,'warn');set('positionForensic',txt);
+    }else{
+      const mk=j.pair?.maker;
+      if(mk){
+        const upFilled=Number.isFinite(Number(mk.upFilledPrice)),downFilled=Number.isFinite(Number(mk.downFilledPrice));
+        if(upFilled!==downFilled){
+          const side=upFilled?'UP':'DOWN',key=side.toLowerCase(),entry=Number(upFilled?mk.upFilledPrice:mk.downFilledPrice),bid=Number(j.bbo?.[key]?.bid),shares=Number(mk.shares||0);
+          const txt='MAKER RESIDUAL '+side+' · '+shares.toFixed(2)+' shares · entry '+(entry*100).toFixed(1)+'¢ · live bid '+(Number.isFinite(bid)?(bid*100).toFixed(1)+'¢':'—')+' · unrealized '+money(p.unrealizedPnl||0,4);
+          set('demoPosition',txt,'warn');set('positionForensic',txt);
+        }else if(!upFilled&&!downFilled){
+          const txt='RESTING MAKER PAIR · UP '+(Number(mk.upQuote||0)*100).toFixed(1)+'¢ / DOWN '+(Number(mk.downQuote||0)*100).toFixed(1)+'¢';
+          set('demoPosition',txt);set('positionForensic',txt);
+        }else{set('demoPosition','MATCHED MAKER SET · MERGE PENDING','good');set('positionForensic','MATCHED MAKER SET · MERGE PENDING');}
+      }else{set('demoPosition','NO OPEN PAPER POSITION');set('positionForensic','NO OPEN PAPER POSITION');}
+    }
+
+    set('demoWhy',(j.mode?j.mode+' · ':'')+(j.decision||'warming up'),String(j.decision||'').startsWith('OPPORTUNITY_')?'good':j.mode==='RISK_LOCK'?'bad':'warn');
+    if(j.candidate){
+      set('demoBest',(j.candidate.side||'—')+' ask '+(Number(j.candidate.ask||0)*100).toFixed(1)+'¢ · fair '+(Number(j.candidate.fair||0)*100).toFixed(1)+'% · net '+(Number(j.candidate.net||0)*100).toFixed(2)+'¢');
+    }else set('demoBest','—');
+    set('demoFeed',feedText(j.feed),(j.feed?.market==='live'&&j.feed?.clob==='live'&&j.feed?.rtds==='live')?'good':'warn');
+
+    renderReasons(j.reasonCounts);
+    renderEvents(p.events);
+  }
+
+  function acceptSnapshot(j){
+    if(j&&typeof j==='object')render(j);
+  }
+
+  window.addEventListener('poly-edge-server-snapshot',e=>acceptSnapshot(e.detail));
+  window.addEventListener('poly-edge-server-error',e=>{
+    const d=e.detail||{};
+    if(d.status===429){set('demoStatus','RATE LIMIT BACKOFF','warn');set('demoWhy','Shared feed backing off '+Math.ceil((d.retryMs||0)/1000)+'s','warn')}
+  });
+
+  function boot(){
+    const snap=window.POLY_EDGE_STATE?.snap;if(snap)acceptSnapshot(snap);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+})();+eq.toFixed(4),eq>=start?'good':'bad');
     set('demoPnl',money(real,4),real>=0?'good':'bad');
+    set('demoTotalPnl',money(total,4),total>=0?'good':'bad');
+    set('demoUnrealized',money(unreal,4),unreal>=0?'good':'bad');
     set('demoTrades',String(p.trades||0));
     set('demoWins',String(p.wins||0));set('demoLosses',String(p.losses||0));
     set('demoWinRate',p.trades?pct(p.winRatePct||0,1):'—');
