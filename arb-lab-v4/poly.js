@@ -1,4 +1,5 @@
 'use strict';
+const POLY_ENGINE_BASE='https://poly-edge-paper-engine.onrender.com';
 (() => {
   const $=id=>document.getElementById(id);
   const state={
@@ -304,7 +305,7 @@
     pollBusy=true;
     const started=performance.now();
     try{
-      const r=await fetch('/api/poly/demo/server',{cache:'no-store'});
+      const r=await fetch(POLY_ENGINE_BASE+'/api/poly/demo/server',{cache:'no-store',mode:'cors'});
       let j=null;try{j=await r.json()}catch{}
       if(r.status===429){
         const retry=Number(r.headers.get('Retry-After'))||5;
