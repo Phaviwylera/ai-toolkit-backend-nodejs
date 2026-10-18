@@ -77,7 +77,7 @@
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download='poly-edge-diagnostic-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
-    const b=document.getElementById('downloadLogBtn');if(b){const old=b.textContent;b.textContent='LOG DOWNLOADED';setTimeout(()=>b.textContent=old,1800)}
+    for(const id of ['downloadLogBtn','downloadLogBtnFull']){const b=document.getElementById(id);if(b){const old=b.textContent;b.textContent='LOG DOWNLOADED';setTimeout(()=>b.textContent=old,1800)}}
   }
 
   add('PAGE_OPEN',{browser:browserState(),dom:domState()});
@@ -92,7 +92,7 @@
   window.addEventListener('poly-edge-opportunity',e=>add('BROWSER_OPPORTUNITY',e.detail||{}));
 
   function boot(){
-    const btn=document.getElementById('downloadLogBtn');if(btn)btn.addEventListener('click',download);
+    for(const id of ['downloadLogBtn','downloadLogBtnFull']){const btn=document.getElementById(id);if(btn)btn.addEventListener('click',download)}
     const snap=window.POLY_EDGE_STATE?.snap;if(snap)capture(snap);
     setInterval(()=>add('BROWSER_HEARTBEAT',{browser:browserState(),dom:domState()}),10000);
   }
