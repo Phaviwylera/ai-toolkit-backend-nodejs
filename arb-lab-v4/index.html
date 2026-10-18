@@ -15,7 +15,7 @@
   </header>
 
   <div class="ticker" aria-label="system ticker">
-    <span>JUPITER V2</span><b>•</b><span>$2 HYPOTHETICAL LOOP</span><b>•</b><span>AUTO SCAN 60S</span><b>•</b><span>REAL EXECUTION REQUIRES FUNDED + UNLOCKED + ARMED BOT WALLET</span><b>•</b><span>NO GUARANTEED PROFIT</span>
+    <span>JUPITER V2</span><b>•</b><span>$2 HYPOTHETICAL LOOP</span><b>•</b><span>CONTINUOUS SCAN</span><b>•</b><span>REAL EXECUTION REQUIRES FUNDED + UNLOCKED + ARMED BOT WALLET</span><b>•</b><span>NO GUARANTEED PROFIT</span>
   </div>
 
   <main>
@@ -92,7 +92,7 @@
       <div class="console-grid">
         <div class="console-info">
           <h2>Scanner always on. Trading only when funded.</h2>
-          <p>The terminal scans current Jupiter routes every minute even if your bot wallet is empty or missing. Real trades remain impossible until the encrypted bot wallet is unlocked, funded, manually armed once, and a fresh executable quote passes all checks.</p>
+          <p>The terminal scans current Jupiter routes continuously on the server even if your bot wallet is empty or missing. Real trades remain impossible until the encrypted bot wallet is unlocked, funded, manually armed once, and a fresh executable quote passes all checks.</p>
           <div class="status-cells">
             <div><span>SCAN</span><b class="green">ALWAYS ON</b></div>
             <div><span>LIVE TRADE LIMIT</span><b>≤ $1 PER CYCLE</b></div>
@@ -101,7 +101,7 @@
           </div>
         </div>
         <div class="console-actions">
-          <button id="scanBtn">↻ SCAN NOW</button>
+          <button id="scanBtn">↻ REQUOTE NOW</button><button id="notifyBtn">🔔 ENABLE OPPORTUNITY ALERTS</button>
           <button id="startBtn" class="arm">▶ ARM AUTO TRADING</button>
           <button id="stopBtn" class="stop" disabled>■ STOP BOT</button>
           <div class="console-note">The $2 panel is a read-only market simulation. The current live engine keeps a smaller per-cycle cap for safety.</div>
@@ -158,6 +158,7 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
+<script src="/market.js" defer></script>
 <script src="https://unpkg.com/@solana/web3.js@1.98.4/lib/index.iife.min.js" defer></script>
 <script src="/app.js" defer></script>
 </body></html>
