@@ -27,12 +27,12 @@
       ref:{spot:n(j?.spot),spotAgeSec:n(j?.spotAgeSec),twap:n(j?.twap),twapAgeSec:n(j?.twapAgeSec),openRef:n(j?.openRef),openTrusted:!!j?.openTrusted},
       model:model?{remaining:n(model.remaining),elapsed:n(model.elapsed),projected:n(model.projected),sigma:n(model.sigma),margin:n(model.margin),z:n(model.z),rawFairUp:n(model.rawFairUp),fairUp:n(model.fairUp),fairDown:n(model.fairDown),basis:n(model.basis),drift:n(model.drift),leadBps:n(model.leadBps),impulse5Bps:n(model.impulse5Bps),lagScore:n(model.lagScore),reliability:n(model.reliability)}:null,
       candidate:c&&Object.keys(c).length?{side:c.side||null,ask:n(c.ask),fair:n(c.fair),fee:n(c.fee),raw:n(c.raw),net:n(c.net),size:n(c.size)}:null,
-      decision:j?.decision||null,mode:j?.mode||null,core:j?.core||null,reasonCounts:j?.reasonCounts||{},
+      decision:j?.decision||null,mode:j?.mode||null,core:j?.core||null,pair:j?.pair||null,reasonCounts:j?.reasonCounts||{},
       paper:{
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
         startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),roiPct:n(p.roiPct),
         fees:n(p.fees),trades:n(p.trades),wins:n(p.wins),losses:n(p.losses),winRatePct:n(p.winRatePct),
-        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
+        blocked:n(p.blocked),nofills:n(p.nofills),executionAttempts:n(p.executionAttempts),postLatencyRejects:n(p.postLatencyRejects),pairAttempts:n(p.pairAttempts),matchedSets:n(p.matchedSets),lockedPairPnl:n(p.lockedPairPnl),avgMatchedSetCost:n(p.avgMatchedSetCost),maxDrawdown:n(p.maxDrawdown),signals:n(p.signals),candidatesSeen:n(p.candidatesSeen),
         position:p.position||null,eventCount:Array.isArray(p.events)?p.events.length:0,
         recentEvents:Array.isArray(p.events)?p.events.slice(0,8):[]
       }
