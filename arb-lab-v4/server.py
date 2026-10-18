@@ -34,6 +34,7 @@ market_seq=0
 venue_latest=None
 venue_history_live=deque(maxlen=240)
 venue_live_status='warming-up'
+jito_selftest='pending'
 market_trigger=asyncio.Event()
 DEXSCREENER='https://api.dexscreener.com'
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
@@ -64,7 +65,7 @@ async def market_js():return FileResponse(ROOT/'market.js',media_type='text/java
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'venue_live_status':venue_live_status,'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'venue_live_status':venue_live_status,'jito_selftest':jito_selftest,'atomic_arbitrage':True}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -331,6 +332,19 @@ async def venue_reference_worker():
 async def start_market_worker():
     asyncio.create_task(continuous_market_worker())
     asyncio.create_task(venue_reference_worker())
+
+@app.on_event('startup')
+async def verify_jito_block_engine():
+    global jito_selftest
+    try:
+        body=await external_call('POST',JITO+'/api/v1/getTipAccounts',json_data={'jsonrpc':'2.0','id':1,'method':'getTipAccounts','params':[]})
+        accounts=body.get('result') or []
+        if not accounts: raise RuntimeError('no tip accounts')
+        jito_selftest='ok'
+        print(f'JITO_SELFTEST_OK accounts={len(accounts)}',flush=True)
+    except Exception as exc:
+        jito_selftest=f'error:{type(exc).__name__}'
+        print(f'JITO_SELFTEST_FAILED {type(exc).__name__}',flush=True)
 
 @app.get('/api/live-market')
 async def live_market():
