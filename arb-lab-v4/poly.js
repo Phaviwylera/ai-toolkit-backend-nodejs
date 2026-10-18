@@ -139,12 +139,25 @@
   }
 
   function renderTape(){
-    const body=$('tapeBody');if(!body)return;body.replaceChildren();
-    if(!state.tape.length){const e=document.createElement('div');e.className='empty';e.textContent='No trade-quality signal yet.';body.append(e);return}
+    const body=$('tapeBody'),full=$('tapeBodyFull');
+    if(body)body.replaceChildren();
+    if(full)full.replaceChildren();
+    set('opportunityCount',String(state.tape.length)+' SIGNALS');
+    if(!state.tape.length){
+      if(body){const e=document.createElement('div');e.className='empty';e.textContent='No trade-quality signal yet.';body.append(e)}
+      if(full){const e=document.createElement('div');e.className='empty';e.textContent='No qualified opportunity yet.';full.append(e)}
+      return;
+    }
     for(const x of state.tape){
-      const r=document.createElement('div');r.className='tapeRow';
       const vals=[istTape(x.t)+' IST',x.side,(x.ask*100).toFixed(1)+'c',pct(x.fair),(x.net*100).toFixed(2)+'c',x.state];
-      vals.forEach((v,i)=>{const e=document.createElement(i===5?'b':'span');e.textContent=v;if(i===4||i===5)e.className='good';r.append(e)});body.append(r);
+      if(body){
+        const r=document.createElement('div');r.className='tapeRow';
+        vals.forEach((v,i)=>{const e=document.createElement(i===5?'b':'span');e.textContent=v;if(i===4||i===5)e.className='good';r.append(e)});body.append(r);
+      }
+      if(full){
+        const r=document.createElement('div');r.className='fullOppRow';
+        vals.forEach((v,i)=>{const e=document.createElement(i===5?'b':'span');e.textContent=v;if(i===4||i===5)e.className='good';r.append(e)});full.append(r);
+      }
     }
   }
 
