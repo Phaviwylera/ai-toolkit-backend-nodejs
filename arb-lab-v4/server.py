@@ -26,6 +26,7 @@ requests_by_ip=defaultdict(deque)
 jupiter_order_lock=asyncio.Lock()
 last_jupiter_order=0.0
 jupiter_provider_selftest='pending'
+market_scan_selftest='pending'
 
 @app.middleware('http')
 async def guard(request:Request,call_next):
@@ -50,7 +51,7 @@ async def app_js():return FileResponse(ROOT/'app.js',media_type='text/javascript
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css')
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'atomic_arbitrage':False}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'atomic_arbitrage':False}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -98,10 +99,28 @@ async def verify_jupiter_provider():
             raise RuntimeError('unexpected order response')
         jupiter_provider_selftest='ok'
         print('JUPITER_SELFTEST_OK', flush=True)
+
+        global market_scan_selftest
+        usd_raw=2_000_000
+        scan_taker='BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV'
+        seed=await jupiter_order({'x-api-key':key,'Accept':'application/json'},{'inputMint':USDC,'outputMint':SOL,'amount':str(usd_raw),'taker':scan_taker})
+        sol_start=int(seed.get('outAmount') or 0)
+        leg1=await jupiter_order({'x-api-key':key,'Accept':'application/json'},{'inputMint':SOL,'outputMint':USDC,'amount':str(sol_start),'taker':scan_taker})
+        usdc_mid=int(leg1.get('outAmount') or 0)
+        leg2=await jupiter_order({'x-api-key':key,'Accept':'application/json'},{'inputMint':USDC,'outputMint':SOL,'amount':str(usdc_mid),'taker':scan_taker})
+        sol_return=int(leg2.get('outAmount') or 0)
+        if min(sol_start,usdc_mid,sol_return)<=0:
+            raise RuntimeError('invalid hypothetical scan amounts')
+        market_scan_selftest='ok'
+        print(f'MARKET_SCAN_SELFTEST_OK start={sol_start} mid={usdc_mid} return={sol_return}', flush=True)
     except Exception as exc:
         code=getattr(exc,'status_code',type(exc).__name__)
-        jupiter_provider_selftest=f'error:{code}'
-        print(f'JUPITER_SELFTEST_FAILED {code}', flush=True)
+        if jupiter_provider_selftest!='ok':
+            jupiter_provider_selftest=f'error:{code}'
+            print(f'JUPITER_SELFTEST_FAILED {code}', flush=True)
+        else:
+            market_scan_selftest=f'error:{code}'
+            print(f'MARKET_SCAN_SELFTEST_FAILED {code}', flush=True)
 
 class Order(BaseModel):
     inputMint:str
