@@ -4,7 +4,7 @@
   const SESSION_ID='pe_'+OPENED_AT.toString(36)+'_'+Math.random().toString(36).slice(2,8);
   const MAX_EVENTS=20000;
   const events=[];
-  let seq=0,lastServerDecision='',lastMarket='',lastFeed='',lastPaperEventCount=-1,lastSnapshot=null;
+  let seq=0,lastServerDecision='',lastMarket='',lastFeed='',lastPaperEventCount=-1,lastSnapshot=null,lastSnapshotAt=0;
 
   function cleanError(e){
     if(!e)return null;
@@ -27,8 +27,7 @@
       ref:{spot:n(j?.spot),spotAgeSec:n(j?.spotAgeSec),twap:n(j?.twap),twapAgeSec:n(j?.twapAgeSec),openRef:n(j?.openRef),openTrusted:!!j?.openTrusted},
       model:model?{remaining:n(model.remaining),elapsed:n(model.elapsed),projected:n(model.projected),sigma:n(model.sigma),margin:n(model.margin),z:n(model.z),rawFairUp:n(model.rawFairUp),fairUp:n(model.fairUp),fairDown:n(model.fairDown),basis:n(model.basis),drift:n(model.drift),leadBps:n(model.leadBps),impulse5Bps:n(model.impulse5Bps),lagScore:n(model.lagScore),reliability:n(model.reliability)}:null,
       candidate:c&&Object.keys(c).length?{side:c.side||null,ask:n(c.ask),fair:n(c.fair),fee:n(c.fee),raw:n(c.raw),net:n(c.net),size:n(c.size)}:null,
-      decision:j?.decision||null,mode:j?.mode||null,
-      reasonCounts:j?.reasonCounts||{},
+      decision:j?.decision||null,mode:j?.mode||null,reasonCounts:j?.reasonCounts||{},
       paper:{
         sessionId:p.sessionId||null,status:p.status||null,startedAt:n(p.startedAt),endsAt:n(p.endsAt),
         startingBalance:n(p.startingBalance),cash:n(p.cash),equity:n(p.equity),realizedPnl:n(p.realizedPnl),roiPct:n(p.roiPct),
@@ -39,75 +38,51 @@
       }
     };
   }
-  async function sample(){
-    const started=performance.now();
-    try{
-      const r=await fetch('/api/poly/demo/server',{cache:'no-store'});
-      const j=await r.json();
-      if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
-      const snap=reduceServer(j);
-      snap.httpMs=Math.round(performance.now()-started);
-      lastSnapshot=snap;
-      add('SERVER_SNAPSHOT',snap);
-
-      const market=snap.market.slug||'';
-      if(market!==lastMarket){add('MARKET_CHANGE',{from:lastMarket||null,to:market||null});lastMarket=market}
-      const decision=String(snap.decision||'');
-      if(decision!==lastServerDecision){add('DECISION_CHANGE',{from:lastServerDecision||null,to:decision,candidate:snap.candidate});lastServerDecision=decision}
-      const feed=JSON.stringify(snap.feed||{});
-      if(feed!==lastFeed){add('FEED_STATE_CHANGE',{feed:snap.feed});lastFeed=feed}
-      const ec=snap.paper.eventCount;
-      if(ec!==lastPaperEventCount){
-        if(lastPaperEventCount>=0&&ec>lastPaperEventCount)add('PAPER_EVENT_CHANGE',{from:lastPaperEventCount,to:ec,recent:snap.paper.recentEvents});
-        lastPaperEventCount=ec;
-      }
-    }catch(e){
-      add('SERVER_SAMPLE_ERROR',{error:cleanError(e),httpMs:Math.round(performance.now()-started)});
-    }
-  }
   function browserState(){
     const s=window.POLY_EDGE_STATE||{};
-    return {
-      online:navigator.onLine,visibility:document.visibilityState,
-      market:s.market?.slug||null,spot:n(s.spot),twap:n(s.twap),openRef:n(s.openRef),openTrusted:!!s.openTrusted,
-      bbo:s.bbo||null,clobReadyState:s.clob?.readyState??null,rtdsReadyState:s.rtds?.readyState??null,
-      latestOpportunity:!!s.latestOpportunity,
-      latestBest:s.latestBest?{side:s.latestBest.side,ask:n(s.latestBest.ask),fair:n(s.latestBest.fair),net:n(s.latestBest.net)}:null
-    };
+    return {online:navigator.onLine,visibility:document.visibilityState,market:s.market?.slug||null,spot:n(s.spot),twap:n(s.twap),openRef:n(s.openRef),openTrusted:!!s.openTrusted,bbo:s.bbo||null,latestOpportunity:!!s.latestOpportunity,latestMode:s.latestMode||null,latestBest:s.latestBest||null};
   }
   function domState(){
     const g=id=>document.getElementById(id)?.textContent?.trim()||null;
-    return {
-      feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),
-      demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),
-      demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')
-    };
+    return {feedStatus:g('feedStatus'),marketState:g('marketState'),edgeState:g('edgeState'),decision:g('decision'),demoStatus:g('demoStatus'),demoWhy:g('demoWhy'),demoBest:g('demoBest'),demoFeed:g('demoFeed'),demoEquity:g('demoEquity'),demoPnl:g('demoPnl'),demoTrades:g('demoTrades'),demoBlocked:g('demoBlocked'),demoNoFill:g('demoNoFill')};
+  }
+  function capture(j){
+    if(!j||typeof j!=='object')return;
+    const now=Date.now();
+    if(now-lastSnapshotAt<700)return;
+    lastSnapshotAt=now;
+    const snap=reduceServer(j);lastSnapshot=snap;add('SERVER_SNAPSHOT',snap);
+    const market=snap.market.slug||'';
+    if(market!==lastMarket){add('MARKET_CHANGE',{from:lastMarket||null,to:market||null});lastMarket=market}
+    const decision=String(snap.decision||'');
+    if(decision!==lastServerDecision){add('DECISION_CHANGE',{from:lastServerDecision||null,to:decision,mode:snap.mode,candidate:snap.candidate});lastServerDecision=decision}
+    const feed=JSON.stringify(snap.feed||{});
+    if(feed!==lastFeed){add('FEED_STATE_CHANGE',{feed:snap.feed});lastFeed=feed}
+    const ec=snap.paper.eventCount;
+    if(ec!==lastPaperEventCount){
+      if(lastPaperEventCount>=0&&ec>lastPaperEventCount)add('PAPER_EVENT_CHANGE',{from:lastPaperEventCount,to:ec,recent:snap.paper.recentEvents});
+      lastPaperEventCount=ec;
+    }
   }
   function download(){
     add('DOWNLOAD_CLICK',{browser:browserState(),dom:domState()});
     const ended=Date.now();
     const payload={
-      format:'POLY_EDGE_DIAGNOSTIC_LOG_V1',
+      format:'POLY_EDGE_DIAGNOSTIC_LOG_V2',
       session:{id:SESSION_ID,openedAt:OPENED_AT,openedAtIso:new Date(OPENED_AT).toISOString(),downloadedAt:ended,downloadedAtIso:new Date(ended).toISOString(),durationMs:ended-OPENED_AT},
-      environment:{
-        page:location.href,origin:location.origin,userAgent:navigator.userAgent,language:navigator.language,
-        online:navigator.onLine,visibility:document.visibilityState,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||null
-      },
+      environment:{page:location.href,origin:location.origin,userAgent:navigator.userAgent,language:navigator.language,online:navigator.onLine,visibility:document.visibilityState,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||null},
       safety:{containsPrivateKeys:false,containsWalletCredentials:false,note:'Diagnostic market/model/paper-trade telemetry only.'},
-      final:{server:lastSnapshot,browser:browserState(),dom:domState()},
-      events
+      final:{server:lastSnapshot,browser:browserState(),dom:domState()},events
     };
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-    a.href=url;a.download='poly-edge-diagnostic-'+stamp+'.json';
-    document.body.appendChild(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),30000);
-    const b=document.getElementById('downloadLogBtn');if(b){const old=b.textContent;b.textContent='✓ LOG DOWNLOADED';setTimeout(()=>b.textContent=old,1800)}
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='poly-edge-diagnostic-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    const b=document.getElementById('downloadLogBtn');if(b){const old=b.textContent;b.textContent='LOG DOWNLOADED';setTimeout(()=>b.textContent=old,1800)}
   }
 
   add('PAGE_OPEN',{browser:browserState(),dom:domState()});
+  window.addEventListener('poly-edge-server-snapshot',e=>capture(e.detail));
+  window.addEventListener('poly-edge-server-error',e=>add('SERVER_FEED_ERROR',e.detail||{}));
   window.addEventListener('error',e=>add('WINDOW_ERROR',{message:String(e.message||''),filename:e.filename||null,line:e.lineno||null,column:e.colno||null,error:cleanError(e.error)}));
   window.addEventListener('unhandledrejection',e=>add('UNHANDLED_REJECTION',{error:cleanError(e.reason)}));
   window.addEventListener('online',()=>add('BROWSER_ONLINE',browserState()));
@@ -117,10 +92,8 @@
   window.addEventListener('poly-edge-opportunity',e=>add('BROWSER_OPPORTUNITY',e.detail||{}));
 
   function boot(){
-    const btn=document.getElementById('downloadLogBtn');
-    if(btn)btn.addEventListener('click',download);
-    sample();
-    setInterval(sample,1000);
+    const btn=document.getElementById('downloadLogBtn');if(btn)btn.addEventListener('click',download);
+    const snap=window.POLY_EDGE_STATE?.snap;if(snap)capture(snap);
     setInterval(()=>add('BROWSER_HEARTBEAT',{browser:browserState(),dom:domState()}),10000);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
