@@ -51,10 +51,10 @@
 
     const age=Math.max(num(j.spotAgeSec)||999,num(j.twapAgeSec)||999);
     set('latency',age<900?(age*1000).toFixed(0)+' ms':'—',age<5?'good':'bad');
-    set('leadBps',bps(model.leadBps));set('impulse5',bps(model.impulse5Bps));
+    set('leadBps',bps(model.leadBps));set('impulse5',bps(model.impulse5Bps));set('impulse5Mirror',bps(model.impulse5Bps));
     set('lagScore',num(model.lagScore)==null?'—':Number(model.lagScore).toFixed(2));
     set('sigma',num(model.sigma)==null?'—':(Number(model.sigma)*10000).toFixed(3)+' bp/sqrt(s)');
-    set('strategyMode',j.mode||'WAIT',String(j.decision||'').startsWith('OPPORTUNITY_')?'good':'warn');
+    set('strategyMode',j.mode||'WAIT',String(j.decision||'').startsWith('OPPORTUNITY_')?'good':'warn');set('strategyModeMirror',j.mode||'WAIT');
 
     const bestNet=num(c.net),fair=num(c.fair),ask=num(c.ask),fee=num(c.fee);
     set('fairUp',pct(model.fairUp));set('fairDown',pct(model.fairDown));
@@ -75,6 +75,9 @@
     set('clobGate',j.feed?.clob==='live'?'LIVE':String(j.feed?.clob||'WARMING').toUpperCase(),j.feed?.clob==='live'?'good':'warn');
     set('rtdsGate',j.feed?.rtds==='live'?'LIVE':String(j.feed?.rtds||'WARMING').toUpperCase(),j.feed?.rtds==='live'?'good':'warn');
 
+    if(!state.history.length&&Array.isArray(j.history)&&j.history.length){
+      state.history=j.history.map(x=>({t:Number(x.t)*1000,spot:num(x.spot),twap:num(x.twap),open:num(x.open),fairUp:num(x.fairUp),upAsk:num(x.upAsk),equity:num(x.equity)})).filter(x=>x.spot);
+    }
     const h={t:now*1000,spot:num(j.spot),twap:num(j.twap),open:num(j.openRef),fairUp:num(model.fairUp),upAsk:num(up.ask),equity:num(paper.equity)};
     if(h.spot&&(!state.history.length||h.t-state.history[state.history.length-1].t>=450))state.history.push(h);
     state.history=state.history.filter(x=>x.t>Date.now()-180000).slice(-360);
