@@ -22,7 +22,7 @@ LAG_MIN_REMAINING_SEC=18.0
 RESOLUTION_WINDOW_SEC=75.0
 LAG_LEAD_MIN_BPS=0.50
 LAG_IMPULSE_MIN_BPS=0.15
-LAG_CONFIRM_SEC=2.50
+LAG_CONFIRM_SEC=1.00
 LAG_ROUNDTRIP_EDGE_MIN=0.04
 MAX_ENTRY_CHASE=0.05
 EXECUTION_LATENCY_SEC=0.35
@@ -69,8 +69,8 @@ class PolyServerDemo:
         self.latest_candidate=None
         self.latest_reason='warming up'
         self.latest_mode='WARMING'
-        self.latest_desk=None
-        self.last_nova_result=None
+        self.latest_core=None
+        self.last_core_state=None
         self.alignment_side=None
         self.alignment_since=0.0
         self.reason_counts=defaultdict(int)
@@ -106,7 +106,7 @@ class PolyServerDemo:
             data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
             p=data.get('paper')
             now=time.time()
-            if not isinstance(p,dict) or int(p.get('version') or 0)!=6 or float(p.get('endsAt') or 0)<=now:
+            if not isinstance(p,dict) or int(p.get('version') or 0)!=7 or float(p.get('endsAt') or 0)<=now:
                 return False
             # Strip calculated presentation fields before resuming mutable state.
             p=dict(p)
@@ -141,7 +141,7 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':6,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':7,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
@@ -497,101 +497,54 @@ class PolyServerDemo:
         if best['roundTripNet']<LAG_ROUNDTRIP_EDGE_MIN:return 'round-trip edge below 4c'
         return 'OPPORTUNITY_LAG'
 
-    def _agent_desk(self,m,best,confidence,reason):
+    def _fast_core(self,m,best,confidence,reason):
         p=self.paper or {}
-        feed_live=all(self.feed.get(k)=='live' for k in ('market','clob','rtds'))
+        now=time.time()
+        fresh=max(now-self.spot_ts if self.spot_ts else 1e9,now-self.twap_ts if self.twap_ts else 1e9)<FEED_FRESH_SEC
         market_ok=bool(self.market and self.market.get('acceptingOrders'))
-        fresh=max(time.time()-self.spot_ts if self.spot_ts else 1e9,time.time()-self.twap_ts if self.twap_ts else 1e9)<FEED_FRESH_SEC
+        feed_live=all(self.feed.get(k)=='live' for k in ('market','clob','rtds'))
         liquidity=float(self.market.get('liquidity') or 0) if self.market else 0.0
-
-        atlas_verdict='WATCH' if feed_live and market_ok and liquidity>500 else ('NEED MORE DATA' if not feed_live else 'SKIP')
-        atlas={
-            'name':'ATLAS','job':'Market scout','verdict':atlas_verdict,
-            'summary':f"Market {'open' if market_ok else 'closed'} · liquidity USD {liquidity:,.0f} · feeds {'live' if feed_live else 'incomplete'}",
-            'evidence':['Polymarket CLOB','market liquidity','feed health'],
-            'missing':[] if feed_live else ['one or more live feeds']
-        }
 
         lead=float(m.get('leadBps') or 0) if m else 0.0
         impulse=float(m.get('impulse5Bps') or 0) if m else 0.0
-        if lead>0 and impulse>0: trend='BULLISH'
-        elif lead<0 and impulse<0: trend='BEARISH'
-        else: trend='MIXED'
-        aligned_side='UP' if lead>=0 else 'DOWN'
-        vega_ok=bool(best and best.get('side')==aligned_side and abs(lead)>=LAG_LEAD_MIN_BPS and abs(impulse)>=LAG_IMPULSE_MIN_BPS)
-        vega={
-            'name':'VEGA','job':'Chart / microstructure analyst',
-            'verdict':'CONFIRM' if vega_ok else 'WAIT',
-            'trend':trend,
-            'summary':f"Lead {lead:+.2f} bps · 5s impulse {impulse:+.2f} bps · aligned side {aligned_side}",
-            'levels':{'spot':self.spot,'twap':self.twap,'openRef':self.open_ref},
-            'confirmation':f"{aligned_side} lead persists for {LAG_CONFIRM_SEC:.1f}s",
-            'invalidation':'lead reverses or round-trip edge falls below threshold'
-        }
+        side=(best.get('side') if best else ('UP' if lead>=0 else 'DOWN'))
+        direction=1 if side=='UP' else -1
+        aligned=(lead*direction>=LAG_LEAD_MIN_BPS and impulse*direction>=LAG_IMPULSE_MIN_BPS)
 
-        orion={
-            'name':'ORION','job':'News analyst','verdict':'NO VERIFIED SOURCE',
-            'summary':'No dated verified news source pack connected. No news claim is generated.',
-            'contextOnly':True,'missing':['2-5 recent credible sources for this market']
-        }
-        luna={
-            'name':'LUNA','job':'Sentiment analyst','verdict':'NO VERIFIED SOURCE',
-            'summary':'No supplied social/search dataset. No sentiment score is invented.',
-            'contextOnly':True,'missing':['supplied social/search evidence']
+        vega={
+            'name':'VEGA','job':'Lag signal',
+            'verdict':'CONFIRM' if aligned else 'WAIT',
+            'side':side,
+            'summary':f"{side} · lead {lead:+.2f} bps · 5s impulse {impulse:+.2f} bps · confirm {LAG_CONFIRM_SEC:.1f}s",
+            'confidence':confidence,
+            'roundTripEdge':float(best.get('roundTripNet') or 0) if best else None
         }
 
         hard_fail=[]
-        revise=[]
         if p.get('status')=='risk_locked': hard_fail.append(p.get('riskLockReason') or 'risk lock active')
-        if not feed_live or not fresh: hard_fail.append('live data incomplete or stale')
+        if not feed_live or not fresh: hard_fail.append('live feed stale/incomplete')
         if not market_ok: hard_fail.append('market not accepting orders')
-        if not best: revise.append('no executable lag candidate')
-        else:
-            if float(best.get('roundTripNet') or -99)<LAG_ROUNDTRIP_EDGE_MIN: revise.append('round-trip edge below threshold')
-            if float(best.get('fair') or 0)<.62: revise.append('fair probability below threshold')
-        if confidence<72: revise.append('confidence below threshold')
-        if reason in {'confirming lag direction','waiting for aligned BTC/TWAP direction'}: revise.append(reason)
-        if self.latest_mode=='RESOLUTION_WATCH': revise.append('resolution is observe-only')
+        if liquidity<=500: hard_fail.append('market liquidity below floor')
+        if not best: hard_fail.append('no executable candidate')
 
         if hard_fail:
-            titan_verdict='REJECT'
-            titan_issue='; '.join(dict.fromkeys(hard_fail))
-        elif reason=='OPPORTUNITY_LAG' and vega_ok and atlas_verdict=='WATCH' and not revise:
-            titan_verdict='APPROVE';titan_issue='all hard lag/risk checks pass'
+            verdict='REJECT';summary='; '.join(dict.fromkeys(hard_fail))
+        elif reason=='OPPORTUNITY_LAG':
+            verdict='APPROVE';summary='signal and hard risk checks pass'
         else:
-            titan_verdict='REVISE';titan_issue='; '.join(dict.fromkeys(revise)) or reason
+            verdict='WAIT';summary=reason
 
         titan={
-            'name':'TITAN','job':'Risk manager','verdict':titan_verdict,
-            'summary':titan_issue,'veto':True,
+            'name':'TITAN','job':'Risk veto','verdict':verdict,'summary':summary,'veto':True,
             'checks':{
-                'feedFresh':fresh,'marketOpen':market_ok,'liquidityOk':liquidity>500,
+                'feedFresh':fresh,'feedLive':feed_live,'marketOpen':market_ok,'liquidityOk':liquidity>500,
                 'maxTradeNotional':MAX_TRADE_NOTIONAL,'maxTradeLossUsd':MAX_TRADE_LOSS_USD,
                 'sessionLossLimitUsd':SESSION_LOSS_LIMIT_USD,
                 'roundTripEdgeOk':bool(best and float(best.get('roundTripNet') or -99)>=LAG_ROUNDTRIP_EDGE_MIN)
             }
         }
+        return {'VEGA':vega,'TITAN':titan,'final':verdict}
 
-        if titan_verdict=='APPROVE':
-            nova_result='TRADE'
-            nova_summary=f"{best.get('side')} lag setup approved by ATLAS + VEGA + TITAN"
-        elif titan_verdict=='REJECT':
-            nova_result='REJECT';nova_summary='TITAN veto: '+titan_issue
-        else:
-            nova_result='WAIT';nova_summary='Await confirmation/revision: '+titan_issue
-        nova={
-            'name':'NOVA','job':'Head trader','verdict':nova_result,'summary':nova_summary,
-            'basis':['ATLAS','VEGA','TITAN'],
-            'newsContext':'ORION unavailable','sentimentContext':'LUNA unavailable'
-        }
-
-        return {'sourcePack':{
-                    'market':self.market.get('slug') if self.market else None,
-                    'spot':self.spot,'twap':self.twap,'openRef':self.open_ref,
-                    'timeframe':'BTC 5-minute Polymarket',
-                    'verifiedNewsCount':0,'sentimentDatasetConnected':False,
-                    'paperOnly':True},
-                'ATLAS':atlas,'VEGA':vega,'ORION':orion,'LUNA':luna,'TITAN':titan,'NOVA':nova}
 
     def _equity(self):
         p=self.paper
@@ -781,11 +734,11 @@ class PolyServerDemo:
             time_score=14 if m['remaining']<=RESOLUTION_WINDOW_SEC else 8
             confidence=max(0,min(100,(32 if self.open_trusted else 5)+(18 if fresh_age<FEED_FRESH_SEC else 4)+data_score+lead_score+time_score+min(8,abs(m['z'])*1.5)))
             reason=self._reason(m,best,confidence);self.latest_reason=reason
-            self.latest_desk=self._agent_desk(m,best,confidence,reason)
-            nova_result=self.latest_desk['NOVA']['verdict']
-            if nova_result!=self.last_nova_result:
-                self.last_nova_result=nova_result
-                self._record('DESK',detail=f"NOVA {nova_result}; TITAN {self.latest_desk['TITAN']['verdict']}; {self.latest_desk['NOVA']['summary']}")
+            self.latest_core=self._fast_core(m,best,confidence,reason)
+            core_state=self.latest_core['final']
+            if core_state!=self.last_core_state:
+                self.last_core_state=core_state
+                self._record('CORE',detail=f"VEGA {self.latest_core['VEGA']['verdict']}; TITAN {core_state}; {self.latest_core['TITAN']['summary']}")
             if now-last_audit>=1:
                 self.reason_counts[reason]+=1;last_audit=now;p['candidatesSeen']+=1
                 self.visual_history.append({
@@ -793,7 +746,7 @@ class PolyServerDemo:
                     'fairUp':m.get('fairUp'),'upAsk':self.bbo['up'].get('ask'),
                     'equity':self._equity(),'mode':self.latest_mode,'decision':reason
                 })
-            if reason=='OPPORTUNITY_LAG' and best and nova_result=='TRADE' and self.latest_desk['TITAN']['verdict']=='APPROVE':
+            if reason=='OPPORTUNITY_LAG' and best and self.latest_core['TITAN']['verdict']=='APPROVE':
                 p['signals']+=1
                 if not p.get('position') and not self.pending and now-p.get('lastOpportunityAt',0)>3:
                     p['lastOpportunityAt']=now
@@ -826,7 +779,7 @@ class PolyServerDemo:
             'bbo':self.bbo,'spot':self.spot,'spotAgeSec':time.time()-self.spot_ts if self.spot_ts else None,
             'twap':self.twap,'twapAgeSec':time.time()-self.twap_ts if self.twap_ts else None,
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
-            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,'desk':self.latest_desk,
+            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,'core':self.latest_core,
             'risk':{'maxTradeNotional':MAX_TRADE_NOTIONAL,'maxTradeLossUsd':MAX_TRADE_LOSS_USD,
                     'sessionLossLimitUsd':SESSION_LOSS_LIMIT_USD,'lagConfirmSec':LAG_CONFIRM_SEC,
                     'alignmentSide':self.alignment_side,'alignmentAgeSec':max(0,time.time()-self.alignment_since) if self.alignment_since else 0,
