@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050607">
 <title>POLY/EDGE V9 — Live Market Workstation</title>
 <link rel="stylesheet" href="/poly.css">
@@ -33,10 +33,18 @@
     </div>
   </div>
 
+  <nav class="mobileDock" aria-label="Mobile quick navigation">
+    <a href="#mobilePnl"><span>ACCOUNT</span><b id="mobileDockEquity">$20.00</b></a>
+    <a href="#mobilePrice"><span>BTC</span><b id="mobileDockBtc">—</b></a>
+    <a href="#mobileMarket"><span>MARKET</span><b id="mobileDockTimer">--:--</b></a>
+    <a href="#mobileNeural"><span>CORE</span><b id="mobileDockCore">WAIT</b></a>
+    <a href="#mobileHistory"><span>HISTORY</span><b>LOGS</b></a>
+  </nav>
+
   <main class="workstation">
     <div class="liveViewport">
     <section class="hudTop">
-      <article class="panel pnlPanel">
+      <article class="panel pnlPanel" id="mobilePnl">
         <div class="panelTop"><span>WALLET / PAPER P&L</span><em id="demoStatus">STARTING</em></div>
         <div class="pnlBig"><small>EQUITY</small><b id="demoEquity">$20.0000</b></div>
         <div class="pnlDelta"><span>REALIZED</span><b id="demoPnl">$0.0000</b></div>
@@ -57,7 +65,7 @@
         </div>
       </article>
 
-      <article class="panel pricePanel">
+      <article class="panel pricePanel" id="mobilePrice">
         <div class="panelTop"><span>BTC / TWAP PRICE</span><em id="refState">SYNCING</em></div>
         <div class="priceHead">
           <b id="spotPrice">$—</b>
@@ -72,7 +80,7 @@
         </div>
       </article>
 
-      <article class="panel lifePanel">
+      <article class="panel lifePanel" id="mobileMarket">
         <div class="panelTop"><span>MARKET LIFECYCLE / ORDERS</span><em id="marketState">DISCOVERING</em></div>
         <div class="marketName" id="question">Bitcoin Up or Down · 5m</div>
         <canvas id="lifecycleCanvas"></canvas>
@@ -101,7 +109,7 @@
       </article>
     </section>
 
-    <section class="panel neuralPanel">
+    <section class="panel neuralPanel" id="mobileNeural">
       <div class="panelTop neuralHead">
         <span>NEURAL MARKET SHELL · LIVE SIGNAL / INVENTORY TOPOLOGY</span>
         <div class="neuralStats">
@@ -153,7 +161,7 @@
     </section>
     </div>
 
-    <section class="forensicDeck">
+    <section class="forensicDeck" id="mobileHistory">
       <div class="forensicHeader">
         <div>
           <span>SESSION FORENSICS / HISTORY</span>
