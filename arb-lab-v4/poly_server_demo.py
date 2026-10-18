@@ -36,7 +36,7 @@ INVENTORY_MAX_RESIDUAL_USD=1.00
 INVENTORY_MAX_INITIAL_GAP=0.045
 INVENTORY_OPEN_AFTER_SEC=20.0
 INVENTORY_STOP_NEW_REMAINING_SEC=75.0
-INVENTORY_QUOTE_TTL_SEC=6.0
+INVENTORY_QUOTE_TTL_SEC=20.0
 INVENTORY_MAX_CYCLES_PER_MARKET=3
 INVENTORY_MIN_REVERSAL_LEAD_BPS=0.10
 INVENTORY_MIN_REVERSAL_IMPULSE_BPS=-0.03
@@ -691,6 +691,7 @@ class PolyServerDemo:
             bid=self.bbo[side].get('bid');ask=self.bbo[side].get('ask');oppask=self.bbo[opp].get('ask')
             if None in (bid,ask,oppask):continue
             bid=float(bid);ask=float(ask);oppask=float(oppask)
+            if bid>INVENTORY_MAX_FIRST_PRICE+1e-9:continue
             maker_px=min(INVENTORY_MAX_FIRST_PRICE,_floor_tick(max(bid,min(ask-tick,INVENTORY_MAX_FIRST_PRICE)),tick))
             if maker_px<.03 or maker_px>=ask-1e-9:continue
             if shares*maker_px>min(INVENTORY_MAX_RESIDUAL_USD,float(self.paper.get('cash') or 0))+1e-9:continue
