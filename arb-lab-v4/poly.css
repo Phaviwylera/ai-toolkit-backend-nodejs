@@ -83,3 +83,60 @@ canvas{image-rendering:auto}
   .neuralStats{gap:5px}.neuralStats span:nth-child(n+5){display:none}.neuralBottom{grid-template-columns:1fr}
   .activityRail{grid-template-columns:120px minmax(0,1fr)}
 }
+
+
+/* V9.1 — keep packed workstation first, restore scrollable forensic/history layer below */
+html,body{height:auto!important;overflow-y:auto!important}
+body{overflow-x:hidden!important}
+.app{height:auto!important;min-height:100vh;display:block!important}
+.topbar{position:sticky;top:0;z-index:30}
+.ticker{position:sticky;top:39px;z-index:29}
+.workstation{display:block!important;height:auto!important;padding:4px!important}
+.liveViewport{
+  height:calc(100vh - 61px);
+  min-height:680px;
+  display:grid;
+  gap:4px;
+  grid-template-rows:minmax(150px,25.5%) minmax(255px,43%) minmax(50px,7.5%) minmax(145px,24%);
+}
+.forensicDeck{margin-top:8px;border-top:1px solid var(--line);padding:10px 4px 34px;background:linear-gradient(180deg,rgba(4,7,7,.98),rgba(3,5,6,.99))}
+.forensicHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px;border:1px solid var(--line);background:#080b0c}
+.forensicHeader span{display:block;font-size:10px;letter-spacing:.13em;color:var(--text)}.forensicHeader small{display:block;color:var(--dim);font-size:8px;margin-top:4px}
+.downloadLogPrimary{border:1px solid rgba(103,243,162,.38);background:linear-gradient(180deg,#0d1712,#08100d);color:var(--green);padding:10px 15px;font:700 9px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;cursor:pointer;white-space:nowrap}
+.downloadLogPrimary:hover{border-color:var(--green);box-shadow:0 0 24px rgba(103,243,162,.08)}
+.forensicStats{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-top:0}
+.forensicStats>div{background:#070a0b;padding:10px;min-width:0}.forensicStats span{display:block;color:var(--dim);font-size:7px;letter-spacing:.09em}.forensicStats b{display:block;margin-top:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.forensicGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.primaryHistory{grid-template-columns:1.25fr .75fr}
+.historyPanel{border:1px solid var(--line);background:linear-gradient(180deg,rgba(13,17,18,.98),rgba(7,9,10,.98));min-width:0;overflow:hidden}
+.historyHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.historyHead span{display:block;font-size:8px;letter-spacing:.12em}.historyHead small{display:block;color:var(--dim);font-size:7px;margin-top:3px}.historyHead>b{color:var(--green);font-size:8px;white-space:nowrap}
+.historyTableHead,.demoRow,.fullOppRow{display:grid;grid-template-columns:1fr .8fr .55fr .7fr .7fr 3fr;gap:8px;align-items:center;padding:8px 10px}
+.historyTableHead{color:var(--dim);font-size:7px;letter-spacing:.08em;border-bottom:1px solid var(--line);position:sticky;top:0;background:#080b0c;z-index:2}
+.opportunityCols,.fullOppRow{grid-template-columns:1fr .6fr .65fr .65fr .7fr 1fr}
+.forensicTape,.fullOpportunityTape{max-height:420px;overflow:auto}
+.demoRow,.fullOppRow{border-bottom:1px solid rgba(255,255,255,.045);font-size:8px;min-height:34px}.demoRow:hover,.fullOppRow:hover{background:rgba(255,255,255,.018)}
+.demoRow .buy{color:var(--cyan)}.demoRow .sell{color:var(--amber)}.demoRow .win{color:var(--green)}.demoRow .loss{color:var(--red)}
+.reasonGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}.reasonGrid>div{background:#070a0b;padding:9px}.reasonGrid span{display:block;color:var(--dim);font-size:7px;letter-spacing:.07em}.reasonGrid b{display:block;margin-top:4px;font-size:8px}
+.gateDetailGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}.gateDetailGrid>div{background:#070a0b;padding:10px}.gateDetailGrid span{display:block;color:var(--dim);font-size:7px;letter-spacing:.07em}.gateDetailGrid b{display:block;margin-top:5px;font-size:8px;line-height:1.4;word-break:break-word}
+.positionForensic{padding:12px;border-bottom:1px solid var(--line);color:var(--amber);font-weight:700;font-size:9px}
+.marketLinkFull{display:block;padding:11px 12px;border-bottom:1px solid var(--line);color:var(--cyan);text-decoration:none;font-size:8px;letter-spacing:.08em}.marketLinkFull:hover{background:rgba(101,213,255,.025)}
+.forensicNote{padding:12px;color:var(--dim);font-size:7px;line-height:1.5}
+.diagVault{display:none!important}
+@media(min-width:901px){
+  html,body{height:auto!important;overflow-y:auto!important}
+  .app{height:auto!important}
+  .workstation{height:auto!important}
+}
+@media(max-width:1100px){
+  .forensicStats{grid-template-columns:repeat(4,1fr)}
+  .forensicGrid,.primaryHistory{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .liveViewport{height:auto;min-height:0;display:block}
+  .forensicDeck{padding:6px 0 24px}.forensicHeader{align-items:stretch;flex-direction:column}.downloadLogPrimary{width:100%}
+}
+@media(max-width:560px){
+  .forensicStats{grid-template-columns:repeat(2,1fr)}
+  .historyTableHead,.demoRow,.fullOppRow,.opportunityCols{grid-template-columns:.85fr .65fr .55fr .65fr .65fr 1.4fr;font-size:6px;gap:4px}
+  .gateDetailGrid,.reasonGrid{grid-template-columns:1fr}
+}
