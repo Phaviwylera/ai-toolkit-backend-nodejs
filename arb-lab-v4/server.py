@@ -281,7 +281,7 @@ async def venue_reference_worker():
     while True:
         try:
             venue_live_status='scanning'
-            data=await external_call('GET',DEXSCREENER+f'/token-pairs/v1/solana/{SOL}')
+            data=await external_call('GET',DEXSCREENER+f'/tokens/v1/solana/{SOL},{USDC}',headers={'Accept':'application/json','User-Agent':'ARB-LAB/1.0'})
             pairs=[]
             if isinstance(data,list):
                 for p in data:
@@ -325,7 +325,7 @@ async def venue_reference_worker():
                 venue_live_status='no-pairs'
         except Exception as exc:
             venue_live_status='error'
-            print(f'VENUE_SCAN_ERROR {type(exc).__name__}',flush=True)
+            print(f"VENUE_SCAN_ERROR {type(exc).__name__} {getattr(exc,'detail','')}",flush=True)
         await asyncio.sleep(2.0)
 
 @app.on_event('startup')
