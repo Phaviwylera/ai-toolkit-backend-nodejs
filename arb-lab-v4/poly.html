@@ -25,14 +25,14 @@
   <div class="ticker">
     <div class="tickerTrack">
       <span>CHAINLINK BTC/USD</span><i>•</i><span>60S TWAP</span><i>•</i><span>POLYMARKET CLOB</span><i>•</i>
-      <span>LAG SCALP V4</span><i>•</i><span>RESOLUTION WATCH</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
-      <span>$20 PAPER CAPITAL</span><i>•</i><span>REAL ORDERS LOCKED</span>
+      <span>LAG SCALP</span><i>•</i><span>RESOLUTION WATCH</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
+      <span>$20 PAPER CAPITAL</span><i>•</i><span>COMPLETE-SET PAIRING</span><i>•</i><span>REAL ORDERS LOCKED</span>
     </div>
   </div>
 
   <section class="accountHero">
     <div class="accountHeroTop">
-      <div><span>$20 PAPER ACCOUNT · FRESH V7 FAST-CORE TEST</span><em id="demoStatus">STARTING</em></div>
+      <div><span>$20 PAPER ACCOUNT · FRESH V8 HYBRID INVENTORY TEST</span><em id="demoStatus">STARTING</em></div>
       <div class="riskBadge"><span>RISK STATE</span><b id="riskState">ARMED</b></div>
     </div>
     <div class="accountMetrics">
@@ -72,13 +72,30 @@
       </div>
     </section>
 
+    <section class="pairCockpit">
+      <div class="pairHead">
+        <div><span>COMPLETE-SET / INVENTORY ENGINE</span><small>UP + DOWN → $1 COLLATERAL · FEE-AWARE · PAPER ONLY</small></div>
+        <b id="pairState">SCANNING</b>
+      </div>
+      <div class="pairMetrics">
+        <div><span>RAW UP+DOWN</span><b id="pairRaw">—</b></div>
+        <div><span>ALL-IN TAKER COST</span><b id="pairCost">—</b></div>
+        <div><span>LOCKABLE EDGE</span><b id="pairEdge">—</b></div>
+        <div><span>MAKER QUOTE SUM</span><b id="makerPair">—</b><small>potential only</small></div>
+        <div><span>MATCHED SETS</span><b id="matchedSets">0.00</b></div>
+        <div><span>LOCKED PAIR P/L</span><b id="lockedPairPnl">$0.0000</b></div>
+        <div><span>AVG MATCHED COST</span><b id="avgPairCost">—</b></div>
+        <div><span>RESIDUAL</span><b id="residualState">NONE</b></div>
+      </div>
+    </section>
+
     <section class="commandDeck">
       <article class="orbPanel">
-        <div class="panelTop"><span>LIVE SIGNAL CORE</span><em id="orbMode">WARMING</em></div>
+        <div class="panelTop"><span>MARKET NEURAL SHELL · LIVE TOPOLOGY</span><em id="orbMode">WARMING</em></div>
         <div class="orbStage">
           <canvas id="orbCanvas"></canvas>
           <div class="orbCenter">
-            <small>BEST SIDE</small>
+            <small>MARKET CORE</small>
             <b id="orbSide">—</b>
             <strong id="orbEdge">—</strong>
             <span id="orbLead">LEAD —</span>
@@ -89,9 +106,9 @@
           <span class="orbitTag tag4">EDGE</span>
         </div>
         <div class="orbFooter">
-          <div><span>MODE</span><b id="strategyMode">WAIT</b></div>
-          <div><span>5S IMPULSE</span><b id="impulse5">—</b></div>
-          <div><span>LAG SCORE</span><b id="lagScore">—</b></div>
+          <div><span>PAIR COST</span><b id="orbPairCost">—</b></div>
+          <div><span>MATCHED</span><b id="orbMatched">0.00</b></div>
+          <div><span>RESIDUAL</span><b id="orbResidual">NONE</b></div>
         </div>
       </article>
 
@@ -164,6 +181,28 @@
       </article>
     </section>
 
+    <section class="marketVisualGrid">
+      <article class="lifecycleCard">
+        <div class="panelTop"><span>MARKET LIFECYCLE · FILLS · MERGES</span><em>LIVE 5M WINDOW</em></div>
+        <canvas id="lifecycleCanvas"></canvas>
+      </article>
+      <article class="resolutionCard">
+        <div class="panelTop"><span>RESOLUTION GRID · LIVE WINDOW</span><em>FAIR UP PROBABILITY</em></div>
+        <div id="resolutionGrid" class="resolutionGrid"></div>
+      </article>
+    </section>
+
+    <section class="marketVisualGrid lower">
+      <article class="matrixCard">
+        <div class="panelTop"><span>EDGE MATRIX · MODEL VS MARKET</span><em>RECENT OBSERVATIONS</em></div>
+        <canvas id="edgeMatrixCanvas"></canvas>
+      </article>
+      <article class="hedgeCard">
+        <div class="panelTop"><span>HEDGE FLOW · WHERE THE MONEY GOES</span><em>LIVE INVENTORY</em></div>
+        <canvas id="hedgeFlowCanvas"></canvas>
+      </article>
+    </section>
+
     <section class="tapePanel">
       <div class="panelTop"><span>OPPORTUNITY TAPE</span><em>QUALIFIED SIGNALS</em></div>
       <div class="tapeHead"><span>TIME</span><span>SIDE</span><span>ASK</span><span>FAIR</span><span>NET EDGE</span><span>MODE</span></div>
@@ -215,12 +254,12 @@
         <div class="rule"><b>01</b><span><strong>LAG SCALP</strong> runs through most of the 5-minute window after a 15-second opening stabilization. It requires a measurable Chainlink spot→TWAP lead aligned with the chosen side.</span></div>
         <div class="rule"><b>02</b><span><strong>RESOLUTION WATCH</strong> remains visible inside the last 75 seconds but auto-trading is disabled until it proves reliable in shadow data.</span></div>
         <div class="rule"><b>03</b><span>Early-window probability is deliberately shrunk toward 50% so small moves cannot instantly become fake 99% certainty.</span></div>
-        <div class="rule"><b>04</b><span>Lag direction must persist 2.5s. V6 uses an adaptive marketable-limit cap funded only by excess modeled edge, then recomputes direction and round-trip edge after 350 ms before any paper fill.</span></div>
+        <div class="rule"><b>04</b><span><strong>HYBRID INVENTORY:</strong> V8 first checks whether UP+DOWN can be acquired below $1 after fees. An open directional leg can be converted into a complete set when the opposite side becomes cheap enough; only a fully matched set is counted as locked profit.</span></div>
       </article>
     </section>
   </main>
 
-  <footer><span>POLY/EDGE V4</span><span>SERVER-AUTHORITATIVE · LAG V4 RISK FILTERS</span><span>PAPER MODE · NO GUARANTEED RETURNS</span></footer>
+  <footer><span>POLY/EDGE V8</span><span>SERVER-AUTHORITATIVE · LAG V4 RISK FILTERS</span><span>PAPER MODE · NO GUARANTEED RETURNS</span></footer>
 </div>
 <script src="/poly.js" defer></script>
 <script src="/poly-demo.js" defer></script>
