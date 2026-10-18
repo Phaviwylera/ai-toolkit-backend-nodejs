@@ -27,3 +27,16 @@ footer{display:flex;justify-content:space-between;gap:16px;padding:12px 16px;bor
 ::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:#1c2a24;border-radius:10px}::-webkit-scrollbar-track{background:#070909}
 @media(max-width:1150px){.commandDeck{grid-template-columns:1fr 1fr}.marketPanel{grid-column:1/-1}.analyticsGrid{grid-template-columns:1fr 1fr}.chartCard{grid-column:1/-1}.enginePanel{grid-column:auto}.demoStats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){main{padding:8px}.topbar{padding:10px}.brand small{display:none}.statusCluster{gap:4px}.statusPill:nth-child(2){display:none}.commandDeck,.analyticsGrid,.bottomGrid{grid-template-columns:1fr}.marketPanel,.chartCard{grid-column:auto}.orbPanel,.edgeHero,.marketPanel{min-height:auto}.orbStage{height:330px}.heroValue{font-size:56px}.demoTop{grid-template-columns:1fr 1fr}.demoStats{grid-template-columns:1fr 1fr 1fr}.demoWhy{grid-template-columns:1fr}.reasonGrid{grid-template-columns:1fr 1fr}.logTools{align-items:stretch;flex-direction:column}.logTools button{width:100%}.tapeHead,.tapeRow{grid-template-columns:.85fr .6fr .7fr .7fr .9fr .9fr;font-size:7px}.demoTapeHead,.demoRow{grid-template-columns:.8fr .65fr .55fr .7fr .7fr 1.5fr;font-size:7px}.tickerTrack{animation-duration:24s}}
+
+.accountHero{margin:10px 12px 0;background:linear-gradient(180deg,rgba(12,17,15,.98),rgba(6,9,8,.98));border:1px solid var(--line);box-shadow:0 18px 54px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.025);position:relative;overflow:hidden}
+.accountHero:before{content:"";position:absolute;left:0;top:0;width:180px;height:1px;background:linear-gradient(90deg,var(--green),transparent);box-shadow:0 0 16px rgba(108,255,169,.28)}
+.accountHeroTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:9px;letter-spacing:.12em;color:var(--dim)}
+.accountHeroTop em{font-style:normal;color:var(--green);margin-left:8px}
+.riskBadge{display:flex;align-items:center;gap:8px}.riskBadge span{color:var(--dim)}.riskBadge b{color:var(--green)}
+.accountMetrics{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:1px;background:var(--line)}
+.metric{background:#070a09;padding:11px 10px;min-height:70px}.metric span{display:block;color:var(--dim);font-size:8px;letter-spacing:.1em}.metric b{display:block;margin-top:6px;font-size:15px;white-space:nowrap}.metric.equity b,.metric.pnl b{font-size:20px}.metric i{font-style:normal}
+.accountHero .position{margin:0;border:0;border-top:1px solid var(--line);border-radius:0;background:linear-gradient(90deg,rgba(108,255,169,.035),rgba(179,108,255,.025))}
+.auditMini{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:9px}
+.auditMini>div{background:#070a0a;padding:9px}.auditMini span{display:block;color:var(--dim);font-size:8px;letter-spacing:.1em}.auditMini b{display:block;margin-top:4px}
+@media(max-width:1150px){.accountMetrics{grid-template-columns:repeat(5,1fr)}}
+@media(max-width:760px){.accountHero{margin:8px 8px 0}.accountHeroTop{align-items:flex-start;flex-direction:column}.accountMetrics{grid-template-columns:repeat(3,1fr)}.metric.equity b,.metric.pnl b{font-size:17px}.auditMini{grid-template-columns:1fr 1fr}}
