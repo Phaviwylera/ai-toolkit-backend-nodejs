@@ -26,6 +26,8 @@ LAG_CONFIRM_SEC=1.00
 LAG_ROUNDTRIP_EDGE_MIN=0.04
 MAX_ENTRY_CHASE=0.05
 EXECUTION_LATENCY_SEC=0.35
+COMPLETE_SET_MAX_COST=0.975
+COMPLETE_SET_MAX_NOTIONAL=5.25
 
 def _jsonish(v):
     if isinstance(v,list): return v
@@ -70,6 +72,7 @@ class PolyServerDemo:
         self.latest_reason='warming up'
         self.latest_mode='WARMING'
         self.latest_core=None
+        self.latest_pair=None
         self.last_core_state=None
         self.alignment_side=None
         self.alignment_since=0.0
@@ -106,7 +109,7 @@ class PolyServerDemo:
             data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
             p=data.get('paper')
             now=time.time()
-            if not isinstance(p,dict) or int(p.get('version') or 0)!=7 or float(p.get('endsAt') or 0)<=now:
+            if not isinstance(p,dict) or int(p.get('version') or 0)!=8 or float(p.get('endsAt') or 0)<=now:
                 return False
             # Strip calculated presentation fields before resuming mutable state.
             p=dict(p)
@@ -141,12 +144,13 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':7,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':8,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
             'position':None,'events':[],'status':'running','lastOpportunityAt':0.0,
             'signals':0,'candidatesSeen':0,'executionAttempts':0,'postLatencyRejects':0,'tradedMarkets':[],'cooldownUntil':0.0,
+            'pairMarkets':[],'pairAttempts':0,'matchedSets':0.0,'lockedPairPnl':0.0,'pairCostSum':0.0,'pairSharesSum':0.0,
             'consecutiveLosses':0,'riskLockReason':None
         }
         self.reason_counts.clear()
@@ -546,6 +550,102 @@ class PolyServerDemo:
         return {'VEGA':vega,'TITAN':titan,'final':verdict}
 
 
+    def _pair_state(self):
+        upa=self.bbo['up'].get('ask');dna=self.bbo['down'].get('ask')
+        upb=self.bbo['up'].get('bid');dnb=self.bbo['down'].get('bid')
+        if upa is None or dna is None:return {'ready':False}
+        upa=float(upa);dna=float(dna)
+        raw=upa+dna
+        fees=_fee_per_share(upa)+_fee_per_share(dna)
+        taker_cost=raw+fees
+        edge=1.0-taker_cost
+        maker_sum=(float(upb)+float(dnb)) if upb is not None and dnb is not None else None
+        pos=(self.paper or {}).get('position')
+        hedge=None
+        if pos:
+            opp='DOWN' if pos['side']=='UP' else 'UP'
+            opp_key='down' if opp=='DOWN' else 'up'
+            opp_ask=self.bbo[opp_key].get('ask')
+            if opp_ask is not None and float(pos.get('shares') or 0)>0:
+                opp_ask=float(opp_ask)
+                entry_unit=float(pos['entryTotalCost'])/float(pos['shares'])
+                hedge_cost=entry_unit+opp_ask+_fee_per_share(opp_ask)
+                hedge={'oppositeSide':opp,'oppositeAsk':opp_ask,'pairCost':hedge_cost,'lockedEdgePerShare':1-hedge_cost,'eligible':hedge_cost<=COMPLETE_SET_MAX_COST}
+        return {'ready':True,'upAsk':upa,'downAsk':dna,'rawPairCost':raw,'takerFeesPerPair':fees,'takerPairCost':taker_cost,
+                'lockedEdgePerShare':edge,'directEligible':taker_cost<=COMPLETE_SET_MAX_COST,'makerQuoteSum':maker_sum,
+                'makerPotentialEdge':(1-maker_sum) if maker_sum is not None else None,
+                'makerNote':'resting-bid sum is potential only; not a locked fill','hedge':hedge}
+
+    def _pair_stats_update(self,shares,cost_per_share,pnl):
+        p=self.paper
+        p['matchedSets']=float(p.get('matchedSets') or 0)+shares
+        p['lockedPairPnl']=float(p.get('lockedPairPnl') or 0)+pnl
+        p['pairCostSum']=float(p.get('pairCostSum') or 0)+shares*cost_per_share
+        p['pairSharesSum']=float(p.get('pairSharesSum') or 0)+shares
+
+    async def _try_direct_pair(self,pair):
+        if self.pending or not self.paper or not self.market or not pair.get('directEligible'):return False
+        p=self.paper;slug=self.market.get('slug')
+        if slug in (p.get('pairMarkets') or []):return False
+        shares=max(5.0,float(self.market.get('minOrderSize') or 0))
+        if float(self.bbo['up'].get('askSize') or 0)<shares or float(self.bbo['down'].get('askSize') or 0)<shares:return False
+        total=shares*float(pair['takerPairCost'])
+        if total>min(float(p['cash']),COMPLETE_SET_MAX_NOTIONAL):return False
+        self.pending=True;p['pairAttempts']=int(p.get('pairAttempts') or 0)+1
+        self._record('PAIR_ORDER',detail=f'direct complete-set paper attempt {shares:.2f} pairs; initial all-in {pair["takerPairCost"]:.4f}')
+        await asyncio.sleep(EXECUTION_LATENCY_SEC)
+        try:
+            fresh=self._pair_state()
+            if not fresh.get('ready') or not fresh.get('directEligible'):
+                p['nofills']+=1;self._record('PAIR_NOFILL',detail='pair edge disappeared during 350ms latency');return False
+            if float(self.bbo['up'].get('askSize') or 0)<shares or float(self.bbo['down'].get('askSize') or 0)<shares:
+                p['nofills']+=1;self._record('PAIR_NOFILL',detail='insufficient live size on one leg');return False
+            up=float(fresh['upAsk']);dn=float(fresh['downAsk'])
+            fees=shares*(_fee_per_share(up)+_fee_per_share(dn));spend=shares*(up+dn)+fees;cost=spend/shares
+            if cost>COMPLETE_SET_MAX_COST or spend>min(float(p['cash']),COMPLETE_SET_MAX_NOTIONAL):
+                p['nofills']+=1;self._record('PAIR_NOFILL',detail=f'post-latency pair cost {cost:.4f} failed cap');return False
+            p['cash']-=spend;p['cash']+=shares
+            pnl=shares-spend;p['realizedPnl']+=pnl;p['fees']+=fees;p['trades']+=1
+            if pnl>=0:p['wins']+=1
+            else:p['losses']+=1
+            p.setdefault('pairMarkets',[]);p['pairMarkets'].append(slug);p['pairMarkets']=p['pairMarkets'][-24:]
+            self._pair_stats_update(shares,cost,pnl)
+            self._record('PAIR_MERGE',pnl=pnl,detail=f'{shares:.2f} complete sets merged; all-in {cost:.4f}; locked edge {(1-cost)*100:.2f}c/share')
+            return True
+        finally:self.pending=False
+
+    async def _try_hedge_pair(self,pair):
+        if self.pending or not self.paper or not self.paper.get('position'):return False
+        hedge=pair.get('hedge') if pair else None
+        if not hedge or not hedge.get('eligible'):return False
+        p=self.paper;pos=p['position'];shares=float(pos['shares'])
+        opp=hedge['oppositeSide'];key='down' if opp=='DOWN' else 'up'
+        if float(self.bbo[key].get('askSize') or 0)<shares:return False
+        opp0=float(hedge['oppositeAsk']);opp_total0=shares*(opp0+_fee_per_share(opp0))
+        if opp_total0>float(p['cash']):return False
+        self.pending=True;p['pairAttempts']=int(p.get('pairAttempts') or 0)+1
+        self._record('HEDGE_ORDER',side=opp,price=opp0,detail=f'complete-set hedge attempt; projected all-in {hedge["pairCost"]:.4f}')
+        await asyncio.sleep(EXECUTION_LATENCY_SEC)
+        try:
+            fresh=self._pair_state();h=fresh.get('hedge') if fresh else None
+            ask=self.bbo[key].get('ask')
+            if not h or not h.get('eligible') or ask is None or float(self.bbo[key].get('askSize') or 0)<shares:
+                p['nofills']+=1;self._record('PAIR_NOFILL',side=opp,detail='hedge pair edge/size disappeared during latency');return False
+            ask=float(ask);fee=shares*_fee_per_share(ask);opp_total=shares*ask+fee
+            cost=(float(pos['entryTotalCost'])+opp_total)/shares
+            if cost>COMPLETE_SET_MAX_COST or opp_total>float(p['cash']):
+                p['nofills']+=1;self._record('PAIR_NOFILL',side=opp,price=ask,detail=f'hedge all-in {cost:.4f} failed cap');return False
+            p['cash']-=opp_total;p['cash']+=shares
+            pnl=shares-float(pos['entryTotalCost'])-opp_total
+            p['realizedPnl']+=pnl;p['fees']+=fee;p['trades']+=1
+            if pnl>=0:p['wins']+=1;p['consecutiveLosses']=0
+            else:p['losses']+=1
+            self._pair_stats_update(shares,cost,pnl)
+            self._record('PAIR_HEDGE_MERGE',side=opp,price=ask,pnl=pnl,detail=f'residual hedged into {shares:.2f} complete sets; all-in {cost:.4f}; locked edge {(1-cost)*100:.2f}c/share')
+            p['position']=None
+            return True
+        finally:self.pending=False
+
     def _equity(self):
         p=self.paper
         if not p:return 0.0
@@ -723,10 +823,13 @@ class PolyServerDemo:
             now=time.time()
             if now>=p['endsAt'] and not p.get('position'):
                 p['status']='complete';self._save();continue
+            pair=self._pair_state();self.latest_pair=pair
+            if pair.get('directEligible') and not p.get('position') and not self.pending and self.market and (float(self.market.get('endTs') or 0)-now)>12:
+                await self._try_direct_pair(pair)
             m=self._model();self.latest_model=m
             if not m:
                 self.latest_candidate=None;self.latest_reason='waiting for live spot/TWAP/open reference'
-                continue
+                self._save();continue
             best=self._candidate(m);self.latest_candidate=best
             fresh_age=max(now-self.spot_ts if self.spot_ts else 1e9,now-self.twap_ts if self.twap_ts else 1e9)
             data_score=min(18,len(self.spot_sec)/5)
@@ -753,7 +856,14 @@ class PolyServerDemo:
                     await self._enter(best,m,confidence)
             pos=p.get('position')
             if pos and self.market and pos.get('marketSlug')==self.market.get('slug') and not self.pending:
-                key='up' if pos['side']=='UP' else 'down';bid=self.bbo[key].get('bid')
+                fresh_pair=self._pair_state();self.latest_pair=fresh_pair
+                if fresh_pair.get('hedge',{}).get('eligible'):
+                    if await self._try_hedge_pair(fresh_pair):
+                        pos=None
+                if pos:
+                    key='up' if pos['side']=='UP' else 'down';bid=self.bbo[key].get('bid')
+                else:
+                    bid=None
                 if bid is not None:
                     bid=float(bid);fee=pos['shares']*_fee_per_share(bid)
                     net=pos['shares']*bid-fee;pnl=net-pos['entryTotalCost']
@@ -779,7 +889,7 @@ class PolyServerDemo:
             'bbo':self.bbo,'spot':self.spot,'spotAgeSec':time.time()-self.spot_ts if self.spot_ts else None,
             'twap':self.twap,'twapAgeSec':time.time()-self.twap_ts if self.twap_ts else None,
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
-            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,'core':self.latest_core,
+            'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,'core':self.latest_core,'pair':self.latest_pair,
             'risk':{'maxTradeNotional':MAX_TRADE_NOTIONAL,'maxTradeLossUsd':MAX_TRADE_LOSS_USD,
                     'sessionLossLimitUsd':SESSION_LOSS_LIMIT_USD,'lagConfirmSec':LAG_CONFIRM_SEC,
                     'alignmentSide':self.alignment_side,'alignmentAgeSec':max(0,time.time()-self.alignment_since) if self.alignment_since else 0,
@@ -787,6 +897,7 @@ class PolyServerDemo:
             'history':list(self.visual_history)[-240:],
             'reasonCounts':dict(self.reason_counts),
             'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
+                     'avgMatchedSetCost':(p.get('pairCostSum',0)/p.get('pairSharesSum',1) if p.get('pairSharesSum',0) else None),
                      'winRatePct':(p.get('wins',0)/p.get('trades',1)*100 if p.get('trades',0) else 0)}
         }
 
