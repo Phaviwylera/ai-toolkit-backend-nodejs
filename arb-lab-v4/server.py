@@ -48,9 +48,16 @@ COINBASE_REST='https://api.exchange.coinbase.com'
 async def guard(request:Request,call_next):
     if request.url.path.startswith('/api/'):
         ip=(request.client.host if request.client else 'unknown')
-        now=time.monotonic(); hits=requests_by_ip[ip]
+        path=request.url.path
+        # Keep the read-only POLY/EDGE snapshot stream in its own bucket.
+        # One dashboard poller can never consume the trading/API rate budget.
+        bucket='poly-snapshot' if path=='/api/poly/demo/server' else 'api'
+        limit=600 if bucket=='poly-snapshot' else 240
+        key=(ip,bucket)
+        now=time.monotonic(); hits=requests_by_ip[key]
         while hits and hits[0]<now-60: hits.popleft()
-        if len(hits)>=240: return JSONResponse({'detail':'Rate limit reached. Automatic backoff active.'},status_code=429,headers={'Retry-After':'5'})
+        if len(hits)>=limit:
+            return JSONResponse({'detail':'Rate limit reached. Automatic backoff active.','retryAfterSeconds':2},status_code=429,headers={'Retry-After':'2'})
         hits.append(now)
     return await call_next(request)
 
