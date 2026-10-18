@@ -271,6 +271,7 @@
     const priceOk=best.ask>=0.03&&best.ask<=0.97;
     const timeOk=m.remaining<=55&&m.remaining>=5;
     const opportunity=state.openTrusted&&fresh&&liquid&&priceOk&&timeOk&&confidence>=70&&best.fair>=0.72&&best.net>=0.02;
+    state.latestModel=m;state.latestBest=best;state.latestConfidence=confidence;state.latestOpportunity=opportunity;
 
     set('modelState',opportunity?'MARKET MISTAKE':'NO QUALIFYING GAP',opportunity?'good':'warn');
     if(opportunity){
