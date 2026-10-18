@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <meta name="theme-color" content="#050607">
-<title>POLY/EDGE — BTC 5m Lag Engine</title>
+<title>POLY/EDGE V9 — Live Market Workstation</title>
 <link rel="stylesheet" href="/poly.css">
 </head>
 <body>
@@ -13,253 +13,154 @@
   <header class="topbar">
     <div class="brand">
       <span class="mark">PE</span>
-      <div><b>POLY/EDGE</b><small>CHAINLINK × POLYMARKET · LIVE PAPER SEARCHER</small></div>
+      <div><b>POLY/EDGE</b><small>BTC 5M · HYBRID INVENTORY + LAG ENGINE</small></div>
     </div>
     <div class="statusCluster">
       <span class="statusPill"><i class="live-dot"></i><b id="feedStatus">CONNECTING</b></span>
       <span class="statusPill">SERVER <b id="serverPing">— ms</b></span>
+      <span class="statusPill">RISK <b id="riskState">ARMED</b></span>
       <span class="statusPill" id="clock">--:--:-- IST</span>
+      <button id="alertsBtn" class="microBtn">ALERTS</button>
+      <button id="downloadLogBtn" class="microBtn">LOG</button>
     </div>
   </header>
 
   <div class="ticker">
     <div class="tickerTrack">
       <span>CHAINLINK BTC/USD</span><i>•</i><span>60S TWAP</span><i>•</i><span>POLYMARKET CLOB</span><i>•</i>
-      <span>LAG SCALP</span><i>•</i><span>RESOLUTION WATCH</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
-      <span>$20 PAPER CAPITAL</span><i>•</i><span>COMPLETE-SET PAIRING</span><i>•</i><span>REAL ORDERS LOCKED</span>
+      <span>VEGA → TITAN FAST CORE</span><i>•</i><span>COMPLETE SETS</span><i>•</i><span>350MS PAPER LATENCY</span><i>•</i>
+      <span>$20 PAPER CAPITAL</span><i>•</i><span>REAL ORDERS LOCKED</span>
     </div>
   </div>
 
-  <section class="accountHero">
-    <div class="accountHeroTop">
-      <div><span>$20 PAPER ACCOUNT · FRESH V8 HYBRID INVENTORY TEST</span><em id="demoStatus">STARTING</em></div>
-      <div class="riskBadge"><span>RISK STATE</span><b id="riskState">ARMED</b></div>
-    </div>
-    <div class="accountMetrics">
-      <div class="metric start"><span>START</span><b>$20.00</b></div>
-      <div class="metric equity"><span>EQUITY</span><b id="demoEquity">$20.0000</b></div>
-      <div class="metric pnl"><span>REALIZED P/L</span><b id="demoPnl">$0.0000</b></div>
-      <div class="metric"><span>TRADES</span><b id="demoTrades">0</b></div>
-      <div class="metric"><span>WINS / LOSSES</span><b><i id="demoWins">0</i> / <i id="demoLosses">0</i></b></div>
-      <div class="metric"><span>WIN RATE</span><b id="demoWinRate">—</b></div>
-      <div class="metric"><span>FEES</span><b id="demoFees">$0.0000</b></div>
-      <div class="metric"><span>MAX DRAWDOWN</span><b id="demoDrawdown">0.00%</b></div>
-      <div class="metric"><span>SESSION LEFT</span><b id="demoLeft">03:00:00</b></div>
-    </div>
-    <div class="position" id="demoPosition">NO OPEN PAPER POSITION</div>
-  </section>
-
-  <main>
-    <section class="fastCore">
-      <div class="fastCoreHead">
-        <div>
-          <span>FAST EXECUTION CORE</span>
-          <small>VEGA SIGNAL → 1.0S PERSISTENCE → TITAN RISK VETO → 350MS POST-LATENCY REVALIDATION</small>
+  <main class="workstation">
+    <section class="hudTop">
+      <article class="panel pnlPanel">
+        <div class="panelTop"><span>WALLET / PAPER P&L</span><em id="demoStatus">STARTING</em></div>
+        <div class="pnlBig"><small>EQUITY</small><b id="demoEquity">$20.0000</b></div>
+        <div class="pnlDelta"><span>REALIZED</span><b id="demoPnl">$0.0000</b></div>
+        <div class="pnlStrip">
+          <div><span>TRADES</span><b id="demoTrades">0</b></div>
+          <div><span>W / L</span><b><i id="demoWins">0</i>/<i id="demoLosses">0</i></b></div>
+          <div><span>WIN</span><b id="demoWinRate">—</b></div>
+          <div><span>FEES</span><b id="demoFees">$0</b></div>
+          <div><span>DD</span><b id="demoDrawdown">0%</b></div>
+          <div><span>LEFT</span><b id="demoLeft">03:00:00</b></div>
         </div>
-        <div class="fastState"><span>FINAL GATE</span><b id="coreFinal">WAIT</b></div>
-      </div>
-      <div class="fastGrid">
-        <article class="fastCard vegaFast">
-          <div class="agentTitle"><span>VEGA</span><em>LAG SIGNAL</em></div>
-          <b id="vegaVerdict">WARMING</b>
-          <p id="vegaSummary">Waiting for BTC/TWAP direction and impulse.</p>
-        </article>
-        <article class="fastCard titanFast">
-          <div class="agentTitle"><span>TITAN</span><em>RISK VETO</em></div>
-          <b id="titanVerdict">WAIT</b>
-          <p id="titanSummary">Waiting for executable signal and hard risk checks.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="pairCockpit">
-      <div class="pairHead">
-        <div><span>COMPLETE-SET / INVENTORY ENGINE</span><small>UP + DOWN → $1 COLLATERAL · FEE-AWARE · PAPER ONLY</small></div>
-        <b id="pairState">SCANNING</b>
-      </div>
-      <div class="pairMetrics">
-        <div><span>RAW UP+DOWN</span><b id="pairRaw">—</b></div>
-        <div><span>ALL-IN TAKER COST</span><b id="pairCost">—</b></div>
-        <div><span>LOCKABLE EDGE</span><b id="pairEdge">—</b></div>
-        <div><span>MAKER QUOTE SUM</span><b id="makerPair">—</b><small>potential only</small></div>
-        <div><span>MATCHED SETS</span><b id="matchedSets">0.00</b></div>
-        <div><span>LOCKED PAIR P/L</span><b id="lockedPairPnl">$0.0000</b></div>
-        <div><span>AVG MATCHED COST</span><b id="avgPairCost">—</b></div>
-        <div><span>RESIDUAL</span><b id="residualState">NONE</b></div>
-      </div>
-    </section>
-
-    <section class="commandDeck">
-      <article class="orbPanel">
-        <div class="panelTop"><span>MARKET NEURAL SHELL · LIVE TOPOLOGY</span><em id="orbMode">WARMING</em></div>
-        <div class="orbStage">
-          <canvas id="orbCanvas"></canvas>
-          <div class="orbCenter">
-            <small>MARKET CORE</small>
-            <b id="orbSide">—</b>
-            <strong id="orbEdge">—</strong>
-            <span id="orbLead">LEAD —</span>
-          </div>
-          <span class="orbitTag tag1">CHAINLINK</span>
-          <span class="orbitTag tag2">TWAP</span>
-          <span class="orbitTag tag3">CLOB</span>
-          <span class="orbitTag tag4">EDGE</span>
-        </div>
-        <div class="orbFooter">
-          <div><span>PAIR COST</span><b id="orbPairCost">—</b></div>
-          <div><span>MATCHED</span><b id="orbMatched">0.00</b></div>
-          <div><span>RESIDUAL</span><b id="orbResidual">NONE</b></div>
+        <div class="coreMini">
+          <div><span>VEGA</span><b id="vegaVerdict">WAIT</b></div>
+          <div><span>TITAN</span><b id="titanVerdict">WAIT</b></div>
+          <div><span>GATE</span><b id="coreFinal">WAIT</b></div>
         </div>
       </article>
 
-      <article class="edgeHero">
-        <div class="panelTop"><span>BEST ALIGNED ROUND-TRIP EDGE</span><em id="edgeState">WAITING</em></div>
-        <div class="heroValue" id="bestEdge">—</div>
-        <div class="heroSide" id="bestSide">NO TRADE</div>
-        <div class="edgeCompare">
-          <div class="edgeCell up"><span>FAIR UP</span><b id="fairUp">—</b><small>ASK <i id="upAsk">—</i></small></div>
-          <div class="vs">VS</div>
-          <div class="edgeCell down"><span>FAIR DOWN</span><b id="fairDown">—</b><small>ASK <i id="downAsk">—</i></small></div>
+      <article class="panel pricePanel">
+        <div class="panelTop"><span>BTC / TWAP PRICE</span><em id="refState">SYNCING</em></div>
+        <div class="priceHead">
+          <b id="spotPrice">$—</b>
+          <span>TWAP <strong id="twapPrice">$—</strong></span>
+          <span>OPEN <strong id="openRef">$—</strong></span>
         </div>
-        <div class="meter"><i id="edgeBar"></i></div>
-        <p id="edgeWhy" class="note">Waiting for server-authoritative model data.</p>
-        <div class="decision" id="decision">NO TRADE · synchronizing</div>
-      </article>
-
-      <article class="marketPanel">
-        <div class="panelTop"><span>CURRENT 5-MINUTE MARKET</span><em id="marketState">DISCOVERING</em></div>
-        <h2 id="question">Bitcoin Up or Down · 5m</h2>
-        <div class="countdown">
-          <small>TIME TO RESOLUTION</small>
-          <b id="timeLeft">--:--</b>
-          <div class="countArc"></div>
-        </div>
-        <div class="book">
-          <div class="outcome up"><span>UP</span><b id="upBbo">— / —</b><small>BID / ASK</small></div>
-          <div class="outcome down"><span>DOWN</span><b id="downBbo">— / —</b><small>BID / ASK</small></div>
-        </div>
-        <div class="micro">
-          <span>VOLUME <b id="volume">$—</b></span>
-          <span>LIQUIDITY <b id="liquidity">$—</b></span>
-          <span>MIN ORDER <b id="minOrder">—</b></span>
-        </div>
-        <a id="marketLink" href="#" target="_blank" rel="noopener">OPEN CURRENT POLYMARKET ↗</a>
-      </article>
-    </section>
-
-    <section class="analyticsGrid">
-      <article class="chartCard">
-        <div class="panelTop"><span>BTC / TWAP MICROSTRUCTURE</span><em>SERVER STREAM</em></div>
         <canvas id="chart"></canvas>
-        <div class="legend"><span class="spotDot">SPOT</span><span class="twapDot">TWAP</span><span class="openDot">OPEN</span></div>
-      </article>
-
-      <article class="oraclePanel">
-        <div class="panelTop"><span>ORACLE MODEL</span><em id="refState">SYNCING</em></div>
-        <div class="oraclePrice main"><span>BTC SPOT</span><b id="spotPrice">$—</b></div>
-        <div class="oraclePrice"><span>CHAINLINK 60S TWAP</span><b id="twapPrice">$—</b></div>
-        <div class="oraclePrice"><span>OPEN REFERENCE</span><b id="openRef">$—</b></div>
-        <div class="oraclePrice"><span>PROJECTED FINAL</span><b id="projectedTwap">$—</b></div>
-        <div class="oracleDelta"><span>MODEL DISTANCE</span><b id="modelDistance">— bps</b></div>
-      </article>
-
-      <article class="enginePanel">
-        <div class="panelTop"><span>MARKET MISTAKE ENGINE</span><em id="modelState">WARMING</em></div>
-        <div class="signalGrid">
-          <div><span>SPOT→TWAP LEAD</span><b id="leadBps">—</b></div>
-          <div><span>5S IMPULSE</span><b id="impulse5Mirror">LIVE</b></div>
-          <div><span>MODEL RELIABILITY</span><b id="confidence">—%</b></div>
-          <div><span>TAKER FEE/SHARE</span><b id="feePerShare">—</b></div>
-          <div><span>RAW EDGE</span><b id="rawEdge">—</b></div>
-          <div><span>ROUND-TRIP EDGE</span><b id="netEdge">—</b></div>
-          <div><span>REFERENCE AGE</span><b id="latency">— ms</b></div>
-          <div><span>OPEN CAPTURE</span><b id="captureState">WAIT</b></div>
-          <div><span>1S VOL</span><b id="sigma">—</b></div>
-          <div><span>STRATEGY</span><b id="strategyModeMirror">SERVER</b></div>
+        <div class="priceFoot">
+          <span>LEAD <b id="leadBps">—</b></span>
+          <span>IMPULSE <b id="impulse5">—</b></span>
+          <span>VOL <b id="sigma">—</b></span>
         </div>
-        <button id="alertsBtn">ENABLE OPPORTUNITY ALERTS</button>
       </article>
-    </section>
 
-    <section class="marketVisualGrid">
-      <article class="lifecycleCard">
-        <div class="panelTop"><span>MARKET LIFECYCLE · FILLS · MERGES</span><em>LIVE 5M WINDOW</em></div>
+      <article class="panel lifePanel">
+        <div class="panelTop"><span>MARKET LIFECYCLE / ORDERS</span><em id="marketState">DISCOVERING</em></div>
+        <div class="marketName" id="question">Bitcoin Up or Down · 5m</div>
         <canvas id="lifecycleCanvas"></canvas>
+        <div class="bookMini">
+          <span>UP <b id="upBbo">— / —</b></span>
+          <span>DOWN <b id="downBbo">— / —</b></span>
+          <span>VOL <b id="volume">$—</b></span>
+          <span>LIQ <b id="liquidity">$—</b></span>
+        </div>
       </article>
-      <article class="resolutionCard">
-        <div class="panelTop"><span>RESOLUTION GRID · LIVE WINDOW</span><em>FAIR UP PROBABILITY</em></div>
+
+      <article class="panel resolutionPanel">
+        <div class="panelTop"><span>RESOLUTION GRID / EXPIRY</span><em id="pairState">SCANNING</em></div>
+        <div class="resolutionHead">
+          <div><span>TIME LEFT</span><b id="timeLeft">--:--</b></div>
+          <div><span>PAIR COST</span><b id="pairCost">—</b></div>
+          <div><span>LOCK EDGE</span><b id="pairEdge">—</b></div>
+        </div>
         <div id="resolutionGrid" class="resolutionGrid"></div>
+        <div class="pairTiny">
+          <span>RAW <b id="pairRaw">—</b></span>
+          <span>MAKER <b id="makerPair">—</b></span>
+          <span>MATCHED <b id="matchedSets">0</b></span>
+          <span>LOCKED <b id="lockedPairPnl">$0</b></span>
+        </div>
       </article>
     </section>
 
-    <section class="marketVisualGrid lower">
-      <article class="matrixCard">
-        <div class="panelTop"><span>EDGE MATRIX · MODEL VS MARKET</span><em>RECENT OBSERVATIONS</em></div>
-        <canvas id="edgeMatrixCanvas"></canvas>
-      </article>
-      <article class="hedgeCard">
-        <div class="panelTop"><span>HEDGE FLOW · WHERE THE MONEY GOES</span><em>LIVE INVENTORY</em></div>
-        <canvas id="hedgeFlowCanvas"></canvas>
-      </article>
+    <section class="panel neuralPanel">
+      <div class="panelTop neuralHead">
+        <span>NEURAL MARKET SHELL · LIVE SIGNAL / INVENTORY TOPOLOGY</span>
+        <div class="neuralStats">
+          <span>MODE <b id="orbMode">WARMING</b></span>
+          <span>SIDE <b id="orbSide">—</b></span>
+          <span>EDGE <b id="orbEdge">—</b></span>
+          <span id="orbLead">LEAD —</span>
+          <span>PAIR <b id="orbPairCost">—</b></span>
+          <span>MATCHED <b id="orbMatched">0</b></span>
+          <span>RESIDUAL <b id="orbResidual">NONE</b></span>
+        </div>
+      </div>
+      <div class="neuralCanvasWrap"><canvas id="orbCanvas"></canvas></div>
+      <div class="neuralBottom">
+        <span>VEGA <b id="vegaSummary">Waiting for signal.</b></span>
+        <span>TITAN <b id="titanSummary">Waiting for risk checks.</b></span>
+        <span>POSITION <b id="demoPosition">NO OPEN PAPER POSITION</b></span>
+      </div>
     </section>
 
-    <section class="tapePanel">
-      <div class="panelTop"><span>OPPORTUNITY TAPE</span><em>QUALIFIED SIGNALS</em></div>
-      <div class="tapeHead"><span>TIME</span><span>SIDE</span><span>ASK</span><span>FAIR</span><span>NET EDGE</span><span>MODE</span></div>
+    <section class="activityRail panel">
+      <div class="railTitle"><span>ACTIVE EVENTS</span><b id="decision">NO TRADE · synchronizing</b></div>
       <div id="tapeBody" class="tapeBody"><div class="empty">No qualified signal yet.</div></div>
     </section>
 
-    <section class="demoPanel">
-      <div class="panelTop"><span>TRADE AUDIT · PAPER EXECUTION</span><em>FORENSIC VIEW</em></div>
-      <div class="auditMini">
-        <div><span>ORDER ATTEMPTS</span><b id="demoAttempts">0</b></div>
-        <div><span>POST-LATENCY REJECTS</span><b id="demoPostRejects">0</b></div>
-        <div><span>BLOCKED</span><b id="demoBlocked">0</b></div>
-        <div><span>NO FILL</span><b id="demoNoFill">0</b></div>
-        <div><span>RISK LIMIT</span><b>$1.50 SESSION</b></div>
-        <div><span>MAX EXPOSURE</span><b>$3.25 / TRADE</b></div>
-      </div>
-
-      <div class="demoWhy">
-        <div><span>WHY NO TRADE?</span><b id="demoWhy">SERVER ENGINE WARMING UP</b></div>
-        <div><span>BEST LIVE CANDIDATE</span><b id="demoBest">—</b></div>
-        <div><span>SERVER FEEDS</span><b id="demoFeed">MARKET / CLOB / RTDS</b></div>
-      </div>
-      <div id="demoReasons" class="reasonGrid"></div>
-
-      <div class="logTools">
-        <button id="downloadLogBtn">DOWNLOAD DIAGNOSTIC LOG</button>
-        <span>Forensic snapshots from page-open to download click. No private keys or wallet credentials.</span>
-      </div>
-
-      <div class="demoTapeHead"><span>TIME</span><span>ACTION</span><span>SIDE</span><span>PRICE</span><span>P/L</span><span>DETAIL</span></div>
-      <div id="demoTape" class="demoTape"><div class="empty">Waiting for a live paper order.</div></div>
-    </section>
-
-    <section class="bottomGrid">
-      <article class="gatePanel">
-        <div class="panelTop"><span>EXECUTION GATES</span><em>REAL MONEY LOCKED</em></div>
-        <div class="gates">
-          <div><span>MARKET DISCOVERY</span><b class="ok">LIVE</b></div>
-          <div><span>CLOB ORDER BOOK</span><b id="clobGate">CONNECTING</b></div>
-          <div><span>CHAINLINK + TWAP</span><b id="rtdsGate">CONNECTING</b></div>
-          <div><span>PAPER EXECUTION</span><b class="ok">AUTONOMOUS</b></div>
-          <div><span>MAX PAPER EXPOSURE</span><b>$3.25 / TRADE</b></div>
-          <div><span>REAL EXECUTION</span><b class="locked">LOCKED</b></div>
+    <section class="hudBottom">
+      <article class="panel matrixPanel">
+        <div class="panelTop"><span>EDGE MATRIX · MODEL / MARKET</span><em id="edgeState">WAITING</em></div>
+        <canvas id="edgeMatrixCanvas"></canvas>
+        <div class="matrixFoot">
+          <span>FAIR UP <b id="fairUp">—</b></span>
+          <span>ASK <b id="upAsk">—</b></span>
+          <span>FAIR DOWN <b id="fairDown">—</b></span>
+          <span>ASK <b id="downAsk">—</b></span>
+          <span>RT EDGE <b id="netEdge">—</b></span>
         </div>
       </article>
 
-      <article class="rulesPanel">
-        <div class="panelTop"><span>STRATEGY LOGIC</span><em>CALIBRATED</em></div>
-        <div class="rule"><b>01</b><span><strong>LAG SCALP</strong> runs through most of the 5-minute window after a 15-second opening stabilization. It requires a measurable Chainlink spot→TWAP lead aligned with the chosen side.</span></div>
-        <div class="rule"><b>02</b><span><strong>RESOLUTION WATCH</strong> remains visible inside the last 75 seconds but auto-trading is disabled until it proves reliable in shadow data.</span></div>
-        <div class="rule"><b>03</b><span>Early-window probability is deliberately shrunk toward 50% so small moves cannot instantly become fake 99% certainty.</span></div>
-        <div class="rule"><b>04</b><span><strong>HYBRID INVENTORY:</strong> V8 first checks whether UP+DOWN can be acquired below $1 after fees. An open directional leg can be converted into a complete set when the opposite side becomes cheap enough; only a fully matched set is counted as locked profit.</span></div>
+      <article class="panel hedgePanel">
+        <div class="panelTop"><span>HEDGE / REBALANCE FLOW</span><em id="strategyModeMirror">SERVER</em></div>
+        <canvas id="hedgeFlowCanvas"></canvas>
+        <div class="flowFoot">
+          <span>AVG SET COST <b id="avgPairCost">—</b></span>
+          <span>RESIDUAL <b id="residualState">NONE</b></span>
+          <span>BEST <b id="bestSide">NO TRADE</b></span>
+          <span>EDGE <b id="bestEdge">—</b></span>
+        </div>
       </article>
     </section>
-  </main>
 
-  <footer><span>POLY/EDGE V8</span><span>SERVER-AUTHORITATIVE · LAG V4 RISK FILTERS</span><span>PAPER MODE · NO GUARANTEED RETURNS</span></footer>
+    <section class="diagVault" aria-hidden="true">
+      <span id="projectedTwap"></span><span id="modelDistance"></span><span id="captureState"></span>
+      <span id="impulse5Mirror"></span><span id="lagScore"></span><span id="confidence"></span>
+      <span id="feePerShare"></span><span id="rawEdge"></span><span id="latency"></span>
+      <span id="modelState"></span><span id="edgeWhy"></span><span id="strategyMode"></span>
+      <span id="clobGate"></span><span id="rtdsGate"></span><span id="minOrder"></span>
+      <a id="marketLink" href="#"></a>
+      <span id="demoBlocked"></span><span id="demoNoFill"></span><span id="demoAttempts"></span><span id="demoPostRejects"></span>
+      <span id="demoWhy"></span><span id="demoBest"></span><span id="demoFeed"></span>
+      <div id="demoReasons"></div><div id="demoTape"></div>
+    </section>
+  </main>
 </div>
 <script src="/poly.js" defer></script>
 <script src="/poly-demo.js" defer></script>
