@@ -119,9 +119,10 @@
     const ws=new WebSocket('wss://ws-live-data.polymarket.com');
     state.rtds=ws;set('rtdsGate','CONNECTING','warn');
     ws.onopen=()=>{
+      const f=JSON.stringify({symbol:'btc/usd'});
       ws.send(JSON.stringify({action:'subscribe',subscriptions:[
-        {topic:'crypto_prices',type:'update',filters:'btcusdt'},
-        {topic:'crypto_prices_twap_sixty',type:'update',filters:JSON.stringify({symbol:'btc/usd'})}
+        {topic:'crypto_prices_chainlink',type:'update',filters:f},
+        {topic:'crypto_prices_twap_sixty',type:'update',filters:f}
       ]}));
       state.rtdsPing=setInterval(()=>{if(ws.readyState===1)ws.send('PING')},5000);
       set('rtdsGate','LIVE','good');
@@ -144,7 +145,7 @@
     const ts=Number(p.timestamp??m.timestamp??Date.now());
     const tms=ts<1e12?ts*1000:ts;
     if(!Number.isFinite(value)||value<=0)return;
-    if(topic==='crypto_prices'){
+    if(topic==='crypto_prices'||topic==='crypto_prices_chainlink'){
       state.spot=value;state.spotTs=tms;
       const sec=Math.floor(tms/1000);state.spotSec.set(sec,value);
       const cutoff=Math.floor(Date.now()/1000)-240;
