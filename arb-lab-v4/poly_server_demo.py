@@ -53,6 +53,7 @@ class PolyServerDemo:
         self.open_ref=None; self.open_ref_ts=0.0; self.open_trusted=False
         self.spot_sec={}
         self.twap_hist=deque(maxlen=300)
+        self.visual_history=deque(maxlen=900)
         self.fallback_sigma=0.00008
         self.feed={'market':'warming','clob':'warming','rtds':'warming'}
         self.latest_model=None
@@ -530,6 +531,11 @@ class PolyServerDemo:
             reason=self._reason(m,best,confidence);self.latest_reason=reason
             if now-last_audit>=1:
                 self.reason_counts[reason]+=1;last_audit=now;p['candidatesSeen']+=1
+                self.visual_history.append({
+                    't':now,'spot':self.spot,'twap':self.twap,'open':self.open_ref,
+                    'fairUp':m.get('fairUp'),'upAsk':self.bbo['up'].get('ask'),
+                    'equity':self._equity(),'mode':self.latest_mode,'decision':reason
+                })
             if reason.startswith('OPPORTUNITY_') and best:
                 p['signals']+=1
                 if not p.get('position') and not self.pending and now-p.get('lastOpportunityAt',0)>3:
@@ -564,6 +570,7 @@ class PolyServerDemo:
             'twap':self.twap,'twapAgeSec':time.time()-self.twap_ts if self.twap_ts else None,
             'openRef':self.open_ref,'openTrusted':self.open_trusted,
             'model':self.latest_model,'candidate':self.latest_candidate,'decision':self.latest_reason,'mode':self.latest_mode,
+            'history':list(self.visual_history)[-240:],
             'reasonCounts':dict(self.reason_counts),
             'paper':{**p,'equity':eq,'roiPct':((eq/p.get('startingBalance',20))-1)*100 if p else 0,
                      'winRatePct':(p.get('wins',0)/p.get('trades',1)*100 if p.get('trades',0) else 0)}
