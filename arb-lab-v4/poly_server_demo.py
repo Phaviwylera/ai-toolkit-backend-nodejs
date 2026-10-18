@@ -28,6 +28,7 @@ MAX_ENTRY_CHASE=0.05
 EXECUTION_LATENCY_SEC=0.35
 COMPLETE_SET_MAX_COST=0.975
 COMPLETE_SET_MAX_NOTIONAL=5.25
+MAKER_PAIRING_ENABLED=False  # V11: suspended after residual-loss audit; wait for wallet-research model
 MAKER_PAIR_MAX_SUM=0.99
 MAKER_PAIR_TARGET_SUM=0.985
 MAKER_SINGLE_LEG_MAX=3.25
@@ -121,7 +122,7 @@ class PolyServerDemo:
             data=json.loads(STATE_FILE.read_text(encoding='utf-8'))
             p=data.get('paper')
             now=time.time()
-            if not isinstance(p,dict) or int(p.get('version') or 0)!=9 or float(p.get('endsAt') or 0)<=now:
+            if not isinstance(p,dict) or int(p.get('version') or 0)!=10 or float(p.get('endsAt') or 0)<=now:
                 return False
             # Strip calculated presentation fields before resuming mutable state.
             p=dict(p)
@@ -156,14 +157,14 @@ class PolyServerDemo:
     def _new_session(self):
         now=time.time()
         self.paper={
-            'version':9,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
+            'version':10,'sessionId':'srv_'+hex(int(now*1_000_000))[2:],
             'startedAt':now,'endsAt':now+10800,'startingBalance':20.0,'cash':20.0,
             'realizedPnl':0.0,'fees':0.0,'trades':0,'wins':0,'losses':0,
             'blocked':0,'nofills':0,'peakEquity':20.0,'maxDrawdown':0.0,
             'position':None,'events':[],'status':'running','lastOpportunityAt':0.0,
             'signals':0,'candidatesSeen':0,'executionAttempts':0,'postLatencyRejects':0,'tradedMarkets':[],'cooldownUntil':0.0,
             'pairMarkets':[],'pairAttempts':0,'matchedSets':0.0,'lockedPairPnl':0.0,'pairCostSum':0.0,'pairSharesSum':0.0,
-            'maker':None,'makerQuotes':0,'makerFills':0,'makerMerges':0,'makerResidualSettles':0,
+            'maker':None,'makerQuotes':0,'makerFills':0,'makerMerges':0,'makerResidualSettles':0,'makerEnabled':MAKER_PAIRING_ENABLED,
             'consecutiveLosses':0,'riskLockReason':None
         }
         self.reason_counts.clear()
@@ -577,6 +578,7 @@ class PolyServerDemo:
 
 
     def _maker_quote_candidate(self):
+        if not MAKER_PAIRING_ENABLED:return None
         if not self.market or not self.paper or not self.open_trusted:return None
         now=time.time();remaining=float(self.market.get('endTs') or 0)-now
         if remaining<=20:return None
@@ -821,7 +823,7 @@ class PolyServerDemo:
                 'maker':(self.paper or {}).get('maker'),
                 'lockedEdgePerShare':edge,'directEligible':taker_cost<=COMPLETE_SET_MAX_COST,'makerQuoteSum':maker_sum,
                 'makerPotentialEdge':(1-maker_sum) if maker_sum is not None else None,
-                'makerNote':'resting-bid sum is potential only; not a locked fill','hedge':hedge}
+                'makerNote':('one-sided maker inventory SUSPENDED after negative-expectancy audit' if not MAKER_PAIRING_ENABLED else 'resting-bid sum is potential only; not a locked fill'),'makerEnabled':MAKER_PAIRING_ENABLED,'hedge':hedge}
 
     def _pair_stats_update(self,shares,cost_per_share,pnl):
         p=self.paper
