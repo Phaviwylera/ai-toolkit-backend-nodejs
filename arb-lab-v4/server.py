@@ -28,15 +28,10 @@ last_jupiter_order=0.0
 jupiter_provider_selftest='pending'
 market_scan_selftest='pending'
 market_latest=None
-market_history_live=deque(maxlen=120)
+market_history_live=deque(maxlen=720)
 market_live_status='warming-up'
 market_seq=0
-venue_latest=None
-venue_history_live=deque(maxlen=240)
-venue_live_status='warming-up'
 jito_selftest='pending'
-market_trigger=asyncio.Event()
-DEXSCREENER='https://api.dexscreener.com'
 JITO='https://singapore.mainnet.block-engine.jito.wtf'
 
 @app.middleware('http')
@@ -65,7 +60,7 @@ async def market_js():return FileResponse(ROOT/'market.js',media_type='text/java
 async def style():return FileResponse(ROOT/'style.css',media_type='text/css',headers={'Cache-Control':'no-store'})
 
 @app.get('/health')
-async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'venue_live_status':venue_live_status,'jito_selftest':jito_selftest,'atomic_arbitrage':True}
+async def health():return {'status':'online','chain':'solana-mainnet','wallet_private_keys_on_server':False,'jupiter_key_configured':bool(os.environ.get('JUPITER_API_KEY')),'jupiter_provider_selftest':jupiter_provider_selftest,'market_scan_selftest':market_scan_selftest,'market_live_status':market_live_status,'market_seq':market_seq,'jito_selftest':jito_selftest,'atomic_bundle_execution':True}
 
 async def external_call(method:str,url:str,*,headers=None,json_data=None,params=None):
     try:
@@ -172,7 +167,7 @@ def _route_labels(order_response):
     return labels
 
 def _rolling_edge_stats(current_edge_bps:float):
-    vals=[float(x.get('conservativeEdgeBps') or 0) for x in list(market_history_live)[:60]]
+    vals=[float(x.get('conservativeEdgeBps') or 0) for x in list(market_history_live)[:180]]
     if not vals:
         return {'edgeMeanBps':0.0,'edgeStdBps':0.0,'edgeZ':0.0,'positiveRatePct':0.0,'persistence':0}
     mean=sum(vals)/len(vals)
@@ -186,11 +181,36 @@ def _rolling_edge_stats(current_edge_bps:float):
         else:break
     return {'edgeMeanBps':round(mean,3),'edgeStdBps':round(std,3),'edgeZ':round(z,3),'positiveRatePct':round(pos,1),'persistence':persistence}
 
-def _median(values):
-    xs=sorted(float(v) for v in values if v is not None)
-    if not xs:return 0.0
-    n=len(xs)
-    return xs[n//2] if n%2 else (xs[n//2-1]+xs[n//2])/2
+def _history_context(current_price:float,leg1_labels:list[str],leg2_labels:list[str]):
+    prior=list(market_history_live)
+    prices=[float(x.get('solPriceUsd') or 0) for x in prior if float(x.get('solPriceUsd') or 0)>0][:180]
+    window=prices[:60]
+    if window:
+        mean=sum(window)/len(window)
+        variance=sum((p-mean)**2 for p in window)/len(window)
+        std=variance**0.5
+        price_z=(current_price-mean)/std if std>1e-9 else 0.0
+    else:
+        price_z=0.0
+    ref=prices[min(11,len(prices)-1)] if prices else current_price
+    short_momentum_bps=((current_price/ref)-1)*10_000 if ref else 0.0
+
+    current_route=tuple(leg1_labels+['→']+leg2_labels)
+    prev_route=()
+    if prior:
+        prev_route=tuple((prior[0].get('leg1Venues') or [])+['→']+(prior[0].get('leg2Venues') or []))
+    recent_labels=set(leg1_labels+leg2_labels)
+    for item in prior[:30]:
+        recent_labels.update(item.get('leg1Venues') or [])
+        recent_labels.update(item.get('leg2Venues') or [])
+    return {
+        'priceZ':round(price_z,3),
+        'shortMomentumBps':round(short_momentum_bps,3),
+        'routeChanged':bool(prev_route and current_route!=prev_route),
+        'routeVenueCount':len(recent_labels),
+        'routeVenues':sorted(recent_labels),
+        'historySamples':len(prior)
+    }
 
 async def calculate_hypothetical(investment_usd:float=2.0):
     key=os.environ.get('JUPITER_API_KEY')
@@ -228,11 +248,17 @@ async def calculate_hypothetical(investment_usd:float=2.0):
     move_buffer_usd=investment*(SCAN_MOVE_BUFFER_BPS/10_000)
     conservative_profit_usd=raw_profit_usd-fee_allowance_usd-move_buffer_usd
     conservative_edge_bps=(conservative_profit_usd/investment*10_000) if investment else 0.0
+    leg1_labels=_route_labels(leg1)
+    leg2_labels=_route_labels(leg2)
     hist=_rolling_edge_stats(conservative_edge_bps)
-    venue=venue_latest or {}
-    venue_spread=float(venue.get('crossVenueSpreadBps') or 0)
-    dislocation=max(0.0,min(100.0, max(0.0,hist['edgeZ'])*18.0 + min(venue_spread,20.0)*2.0))
-    confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45 + dislocation*0.08))
+    ctx=_history_context(sol_price,leg1_labels,leg2_labels)
+    dislocation=max(0.0,min(100.0,
+        max(0.0,hist['edgeZ'])*22.0 +
+        min(abs(ctx['priceZ']),4.0)*8.0 +
+        (8.0 if ctx['routeChanged'] else 0.0) +
+        min(ctx['routeVenueCount'],5)*2.0
+    ))
+    confidence=max(5.0,min(95.0,50.0+conservative_edge_bps*0.45 + dislocation*0.06))
     verdict='EXECUTE-CANDIDATE' if conservative_profit_usd>0.001 else ('WATCH' if raw_profit_usd>0 else 'REJECT')
 
     return {
@@ -247,11 +273,13 @@ async def calculate_hypothetical(investment_usd:float=2.0):
         'projectedReturnUsd':round(investment+conservative_profit_usd,8),
         'confidence':round(confidence,1),'confidenceType':'heuristic-not-statistical',
         'verdict':verdict,'route':'SOL → USDC → SOL','router':'Jupiter Swap V2',
-        'leg1Venues':_route_labels(leg1),'leg2Venues':_route_labels(leg2),
+        'leg1Venues':leg1_labels,'leg2Venues':leg2_labels,
         'edgeMeanBps':hist['edgeMeanBps'],'edgeStdBps':hist['edgeStdBps'],'edgeZ':hist['edgeZ'],
         'positiveRatePct':hist['positiveRatePct'],'persistence':hist['persistence'],
-        'crossVenueSpreadBps':round(venue_spread,3),'dislocationScore':round(dislocation,1),
-        'venueSignalAgeSec':round(max(0.0,time.time()-float(venue.get('timestamp') or time.time())),2)
+        'dislocationScore':round(dislocation,1),'priceZ':ctx['priceZ'],
+        'shortMomentumBps':ctx['shortMomentumBps'],'routeChanged':ctx['routeChanged'],
+        'routeVenueCount':ctx['routeVenueCount'],'routeVenues':ctx['routeVenues'],
+        'historySamples':ctx['historySamples']
     }
 
 async def continuous_market_worker():
@@ -270,68 +298,11 @@ async def continuous_market_worker():
         except Exception as exc:
             market_live_status='error'
             print(f"LIVE_SCAN_ERROR {type(exc).__name__}",flush=True)
-        try:
-            await asyncio.wait_for(market_trigger.wait(),timeout=0.15)
-            market_trigger.clear()
-        except asyncio.TimeoutError:
-            pass
-
-async def venue_reference_worker():
-    global venue_latest,venue_live_status
-    while True:
-        try:
-            venue_live_status='scanning'
-            data=await external_call('GET',DEXSCREENER+f'/tokens/v1/solana/{SOL},{USDC}',headers={'Accept':'application/json','User-Agent':'ARB-LAB/1.0'})
-            pairs=[]
-            if isinstance(data,list):
-                for p in data:
-                    if p.get('chainId')!='solana': continue
-                    base=(p.get('baseToken') or {}).get('address')
-                    quote=(p.get('quoteToken') or {}).get('symbol','').upper()
-                    if base!=SOL or quote not in {'USDC','USDT'}: continue
-                    liq=float((p.get('liquidity') or {}).get('usd') or 0)
-                    price=float(p.get('priceUsd') or 0)
-                    if liq<50_000 or price<=0: continue
-                    pairs.append({
-                        'dex':p.get('dexId') or 'unknown','pairAddress':p.get('pairAddress') or '',
-                        'priceUsd':price,'liquidityUsd':liq,
-                        'm5':float((p.get('priceChange') or {}).get('m5') or 0),
-                        'h1':float((p.get('priceChange') or {}).get('h1') or 0),
-                        'h6':float((p.get('priceChange') or {}).get('h6') or 0),
-                        'h24':float((p.get('priceChange') or {}).get('h24') or 0),
-                    })
-            pairs=sorted(pairs,key=lambda x:x['liquidityUsd'],reverse=True)[:16]
-            if pairs:
-                by_dex={}
-                for p in pairs:
-                    if p['dex'] not in by_dex: by_dex[p['dex']]=p
-                venues=list(by_dex.values())
-                prices=[p['priceUsd'] for p in venues]
-                lo=min(venues,key=lambda x:x['priceUsd']); hi=max(venues,key=lambda x:x['priceUsd'])
-                mid=(lo['priceUsd']+hi['priceUsd'])/2
-                spread=((hi['priceUsd']-lo['priceUsd'])/mid*10_000) if mid else 0
-                snap={
-                    'timestamp':time.time(),'venues':venues[:8],'venueCount':len(venues),
-                    'lowDex':lo['dex'],'lowPrice':lo['priceUsd'],'highDex':hi['dex'],'highPrice':hi['priceUsd'],
-                    'crossVenueSpreadBps':round(spread,3),
-                    'momentum5mPct':round(_median([p['m5'] for p in venues]),3),
-                    'momentum1hPct':round(_median([p['h1'] for p in venues]),3),
-                    'momentum6hPct':round(_median([p['h6'] for p in venues]),3),
-                    'momentum24hPct':round(_median([p['h24'] for p in venues]),3),
-                }
-                venue_latest=snap;venue_history_live.appendleft(snap);venue_live_status='live'
-                if spread>=3.0: market_trigger.set()
-            else:
-                venue_live_status='no-pairs'
-        except Exception as exc:
-            venue_live_status='error'
-            print(f"VENUE_SCAN_ERROR {type(exc).__name__} {getattr(exc,'detail','')}",flush=True)
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(0.15)
 
 @app.on_event('startup')
 async def start_market_worker():
     asyncio.create_task(continuous_market_worker())
-    asyncio.create_task(venue_reference_worker())
 
 @app.on_event('startup')
 async def verify_jito_block_engine():
@@ -354,7 +325,7 @@ async def live_market():
         'history':list(market_history_live)[:24],
         'scanInterval':'continuous-provider-limited',
         'providerLimit':'Jupiter requests serialized to ~1 request/second',
-        'venueStatus':venue_live_status,'venue':venue_latest
+        'signalSource':'executable-route-history'
     }
 
 @app.post('/api/hypothetical')
